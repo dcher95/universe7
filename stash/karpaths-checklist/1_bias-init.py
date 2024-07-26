@@ -12,12 +12,14 @@ model = models.resnet18(pretrained=True)
 num_features = model.fc.in_features
 model.fc = nn.Linear(num_features, 1)
 
-# Initialize final layer weights and bias
-nn.init.normal_(model.fc.weight, mean=0, std=0.01)
-model.fc.bias.data.fill_(50)  # Assume mean of target values is 50
+# Initialize final layer bias
+target_mean = 50  # Assume mean of target values is 50
+model.fc.bias.data.fill_(target_mean)
 
 # Print model to verify changes
 print(model)
+
+#############################################################
 
 ## Binary Classification Example
 import torch
@@ -31,14 +33,14 @@ model = models.resnet18(pretrained=True)
 num_features = model.fc.in_features
 model.fc = nn.Linear(num_features, 1)
 
-# Initialize final layer weights and bias
-nn.init.normal_(model.fc.weight, mean=0, std=0.01)
-
-# For 1:10 ratio of positives:negatives, set bias to log(0.1 / 0.9)
-model.fc.bias.data.fill_(torch.log(torch.tensor(0.1 / 0.9)))
+# Initialize final layer bias for 1:10 ratio of positives:negatives
+ratio = 1 / 10
+model.fc.bias.data.fill_(torch.log(torch.tensor(ratio / (1 - ratio))))
 
 # Print model to verify changes
 print(model)
+
+#############################################################
 
 
 ## Multi-class Classification Example
@@ -54,12 +56,9 @@ num_features = model.fc.in_features
 num_classes = 3
 model.fc = nn.Linear(num_features, num_classes)
 
-# Initialize final layer weights
-nn.init.normal_(model.fc.weight, mean=0, std=0.01)
-
-# Assuming class ratios are 1:2:7
-class_ratios = torch.tensor([1/10, 2/10, 7/10])  # Class ratios sum to 1
-model.fc.bias.data = torch.log(class_ratios)  # Logits initialization
+# Initialize final layer biases for class ratios 1:2:7
+class_ratios = torch.tensor([1/10, 2/10, 7/10])
+model.fc.bias.data = torch.log(class_ratios)
 
 # Print model to verify changes
 print(model)
