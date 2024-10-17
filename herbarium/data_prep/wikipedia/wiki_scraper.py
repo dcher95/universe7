@@ -91,7 +91,7 @@ def process_species(species_name: str, sections: List[str]) -> Optional[Dict[str
     """
     try:
         # Assuming ws.get_wikipedia_content is a function that retrieves Wikipedia content
-        wiki_dict = ws.get_wikipedia_content(species_name=species_name, sections=sections)
+        wiki_dict = get_wikipedia_content(species_name=species_name, sections=sections)
         return wiki_dict
     except PageError:
         return None
