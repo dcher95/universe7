@@ -6,6 +6,10 @@ def _clean_data(data):
     
     data = data[~data['stateProvince'].isna()]
 
+    data['stateProvince'] = data['stateProvince'].replace({'New jersey' : 'New Jersey', 
+                                                           'oklahoma' : 'Oklahoma', 
+                                                           'wyoming' : 'Wyoming'})
+
     data = data[
         pd.to_numeric(data['decimalLatitude'], errors='coerce').notnull() &
         pd.to_numeric(data['decimalLongitude'], errors='coerce').notnull()

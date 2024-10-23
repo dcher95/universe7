@@ -9,7 +9,8 @@ from helper import (
     _create_point_bbox,
     _create_cluster_bbox,
     _get_bbox_mask,
-    _assign_new_cluster
+    _assign_new_cluster,
+    _create_directories
 )
 from gbif import build_geodataframe
 import os
@@ -78,42 +79,33 @@ def geocell_clustering(gdf, state, max_distance):
     return gdf
 
 if __name__ == '__main__':
+    
+    dimension = 512
 
-    ### Create output directories if they do not exist & initial files for writing
-    output_geojson='/data/cher/universe7/herbarium/data/geocell/clusters.geojson'
-    output_csv='/data/cher/universe7/herbarium/data/geocell/clusters_key.csv'
+    output_geojson=f'/data/cher/universe7/herbarium/data/geocell/clusters_{dimension}m.geojson'
+    output_csv=f'/data/cher/universe7/herbarium/data/geocell/clusters_key_{dimension}m.csv'
 
-    output_geojson_dir = os.path.dirname(output_geojson)
-    output_csv_dir = os.path.dirname(output_csv)
-
-    if output_geojson_dir and not os.path.exists(output_geojson_dir):
-        os.makedirs(output_geojson_dir)
-    if output_csv_dir and not os.path.exists(output_csv_dir):
-        os.makedirs(output_csv_dir)
-
-    # cluster-bbox id file
-    # all_bounding_boxes = gpd.GeoDataFrame(columns=['cluster', 'lat', 'lon' ,'geometry'], geometry='geometry')
-    pd.DataFrame().to_csv(output_csv, index=False)
-
+    _create_directories(output_geojson,
+                        output_csv)
+    
     ### Input file downloaded from gbif -- occurrences
     gdf = build_geodataframe(gbif_path = "/data/cher/universe7/herbarium/data/MO-herbarium/occurrence.txt")
 
     # Image ==> 512 x 512
-    radius = 512
-    radius_deg = _generate_radius_in_deg(radius)
+    dimension_deg = _generate_radius_in_deg(dimension)
 
     # Process each state
     states = gdf['stateProvince'].unique()
     for state in tqdm(states, desc="Processing States"):
         print(state)
         gdf_s = gdf[gdf['stateProvince'] == state].copy()
-        gdf_s = geocell_clustering(gdf_s, state, radius)
+        gdf_s = geocell_clustering(gdf_s, state, dimension)
 
         # Save {occurrenceID, cluster} key
         gdf_s[['occurrenceID', 'cluster']].to_csv(output_csv, mode='a', header=False, index=False)
 
         # Create bounding boxes for each cluster
-        bbox_gdf = _create_cluster_bbox(gdf_s, radius_deg)
+        bbox_gdf = _create_cluster_bbox(gdf_s, dimension_deg)
 
         if not os.path.exists(output_geojson):
             bbox_gdf.to_file(output_geojson, driver="GeoJSON")

@@ -3,6 +3,7 @@ from shapely.geometry import box
 import random
 import pandas as pd
 import geopandas as gpd
+import os
 
 def _check_max_haversine_distances(gdf):
     """Calculate the max distances for each cluster."""
@@ -60,3 +61,15 @@ def _create_cluster_bbox(gdf_s, radius_deg):
         
     # Convert bounding boxes to GeoDataFrame and save to GeoJSON iteratively
     return gpd.GeoDataFrame(bounding_boxes)
+
+def _create_directories(output_geojson, output_csv):
+
+    output_geojson_dir = os.path.dirname(output_geojson)
+    output_csv_dir = os.path.dirname(output_csv)
+
+    if output_geojson_dir and not os.path.exists(output_geojson_dir):
+        os.makedirs(output_geojson_dir)
+    if output_csv_dir and not os.path.exists(output_csv_dir):
+        os.makedirs(output_csv_dir)
+
+    pd.DataFrame().to_csv(output_csv, index=False)
