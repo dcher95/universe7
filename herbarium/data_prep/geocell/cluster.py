@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN
-from distance import _generate_radius_in_deg
+from distance_utils import _generate_diameter_in_deg
 from helper import (
     _check_max_distances,
     _get_points,
@@ -12,7 +12,7 @@ from helper import (
     _assign_new_cluster,
     _create_directories
 )
-from gbif import build_geodataframe
+from gbif_utils import build_geodataframe
 import os
 import geopandas as gpd
 from tqdm import tqdm
@@ -64,14 +64,14 @@ def geocell_clustering(gdf, state, max_distance):
     """Cluster points within a specified state and max distance."""
     
     # Perform initial DBSCAN clustering
-    radius_deg = _generate_radius_in_deg(max_distance)
+    diameter_deg = _generate_diameter_in_deg(max_distance)
 
-    labels = perform_dbscan(gdf, max_distance, eps = radius_deg)
+    labels = perform_dbscan(gdf, max_distance, eps = diameter_deg)
     gdf['cluster'] = labels
     num_clusters = labels.max()
 
     # Refine clusters until all meet the max distance threshold
-    gdf = refine_clusters(gdf, radius_deg, num_clusters, state)
+    gdf = refine_clusters(gdf, diameter_deg, num_clusters, state)
 
     # Renumber clusters and create state-specific labels
     gdf = renumber_clusters(gdf, state)
@@ -79,38 +79,46 @@ def geocell_clustering(gdf, state, max_distance):
     return gdf
 
 if __name__ == '__main__':
+    '''
+    Bounding boxes polygon are not necessary outputs so commented out
+    '''
     
-    dimension = 512
+    dimension = 256
+    meters_per_pixel = 0.6
+    dimension_distance = dimension * meters_per_pixel
 
-    output_geojson=f'/data/cher/universe7/herbarium/data/geocell/clusters_{dimension}m.geojson'
+    # output_bbox_poly=f'/data/cher/universe7/herbarium/data/geocell/clusters_{dimension}m_{meters_per_pixel}ppixel_polygon.geojson'
+    output_bbox_pt=f'/data/cher/universe7/herbarium/data/geocell/clusters_{dimension}m_{meters_per_pixel}ppixel_centroid.csv'
     output_csv=f'/data/cher/universe7/herbarium/data/geocell/clusters_key_{dimension}m.csv'
 
-    _create_directories(output_geojson,
-                        output_csv)
+    _create_directories([output_bbox_pt, 
+                        #  output_bbox_poly, 
+                         output_csv])
     
     ### Input file downloaded from gbif -- occurrences
     gdf = build_geodataframe(gbif_path = "/data/cher/universe7/herbarium/data/MO-herbarium/occurrence.txt")
 
-    # Image ==> 512 x 512
-    dimension_deg = _generate_radius_in_deg(dimension)
+    dimension_deg = _generate_diameter_in_deg(dimension_distance)
 
     # Process each state
     states = gdf['stateProvince'].unique()
     for state in tqdm(states, desc="Processing States"):
         print(state)
         gdf_s = gdf[gdf['stateProvince'] == state].copy()
-        gdf_s = geocell_clustering(gdf_s, state, dimension)
+        gdf_s = geocell_clustering(gdf_s, state, dimension_distance)
 
         # Save {occurrenceID, cluster} key
-        gdf_s[['occurrenceID', 'cluster']].to_csv(output_csv, mode='a', header=False, index=False)
+        gdf_s[['occurrenceID', 'cluster']].to_csv(output_csv, mode='a', index=False)
 
         # Create bounding boxes for each cluster
         bbox_gdf = _create_cluster_bbox(gdf_s, dimension_deg)
+        bbox_gdf[['cluster', 'lon', 'lat']].to_csv(output_bbox_pt, mode='a', index=False)
 
-        if not os.path.exists(output_geojson):
-            bbox_gdf.to_file(output_geojson, driver="GeoJSON")
-        else:
-            bbox_gdf.to_file(output_geojson, driver="GeoJSON", mode='a')
 
-    print(f"Saved all clusters to {output_geojson}")
+        # if not os.path.exists(output_geojson):
+        #     bbox_gdf.to_file(output_bbox_poly, driver="GeoJSON")
+        # else:
+        #     bbox_gdf.to_file(output_bbox_poly, driver="GeoJSON", mode='a')
+
+    print(f"Saved all clusters centroids to {output_bbox_pt}")
     print(f"Saved occurrenceID and cluster mapping to {output_csv}")

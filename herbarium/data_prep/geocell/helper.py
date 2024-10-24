@@ -1,4 +1,4 @@
-from distance import max_haversine_distance, max_distance
+from universe7.herbarium.data_prep.geocell.distance_utils import max_haversine_distance, max_distance
 from shapely.geometry import box
 import random
 import pandas as pd
@@ -42,13 +42,13 @@ def _assign_new_cluster(gdf, mask, num_clusters):
     gdf.loc[mask, 'cluster'] = num_clusters + 1
     return gdf
 
-def _create_cluster_bbox(gdf_s, radius_deg):
+def _create_cluster_bbox(gdf_s, radius_diameter):
     """Create bounding box based on mean of clustered points"""
     bounding_boxes = []
     for label in gdf_s['cluster'].unique():
         cluster_points = gdf_s[gdf_s['cluster'] == label]
-        minx, miny = cluster_points.geometry.x.min() - (radius_deg / 2), cluster_points.geometry.y.min() - (radius_deg / 2)
-        maxx, maxy = cluster_points.geometry.x.max() + (radius_deg /  2), cluster_points.geometry.y.max() + (radius_deg / 2)
+        minx, miny = cluster_points.geometry.x.min() - (radius_diameter / 2), cluster_points.geometry.y.min() - (radius_diameter / 2)
+        maxx, maxy = cluster_points.geometry.x.max() + (radius_diameter /  2), cluster_points.geometry.y.max() + (radius_diameter / 2)
         bbox = box(minx, miny, maxx, maxy)
         centroid = bbox.centroid
 
@@ -62,14 +62,13 @@ def _create_cluster_bbox(gdf_s, radius_deg):
     # Convert bounding boxes to GeoDataFrame and save to GeoJSON iteratively
     return gpd.GeoDataFrame(bounding_boxes)
 
-def _create_directories(output_geojson, output_csv):
+def _create_directories(files):
 
-    output_geojson_dir = os.path.dirname(output_geojson)
-    output_csv_dir = os.path.dirname(output_csv)
+    for file in files:
+        file_dir = os.path.dirname(file)
 
-    if output_geojson_dir and not os.path.exists(output_geojson_dir):
-        os.makedirs(output_geojson_dir)
-    if output_csv_dir and not os.path.exists(output_csv_dir):
-        os.makedirs(output_csv_dir)
+        if file_dir and not os.path.exists(file_dir):
+            os.makedirs(file_dir)
 
-    pd.DataFrame().to_csv(output_csv, index=False)
+        if file.lower().endswith(".csv"):
+            pd.DataFrame().to_csv(file, index=False)

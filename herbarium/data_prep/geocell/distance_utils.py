@@ -36,5 +36,5 @@ def max_distance(group):
         max_dist = 0  # Only one point, no distance to calculate
     return max_dist
 
-def _generate_radius_in_deg(max_distance):
-    return round(max_distance / 111320, 4)
+def _generate_diameter_in_deg(dimension_distance):
+    return round(dimension_distance / 111320, 6)
