@@ -1,0 +1,92 @@
+---
+title: "QPM II - Class Session 15"
+output: pdf_document
+date: "2024-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We are going to think about hypothesis testing again. In particular, we are going to think about testing:
+
+H0 : μ = 0
+H1 : μ = 20
+
+This is somewhat contrived, but the example will help you think through some of the differences between all of the various approaches.
+
+Use this code to generate the data:
+set.seed(1234)
+x<-rnorm(60, mean=3, sd=1)
+x.bar<-mean(x)
+sd<-sd(x)
+
+We will assume that σ2 is fixed and known (so not a parameter).
+
+1. Calculate the p-value for this test. What conclusion did you reach? Does that seem right?
+
+
+```{r}
+set.seed(1234)
+x <- rnorm(60, mean=3, sd=1)
+x.bar <- mean(x)
+sd <- sd(x)
+
+# Assuming known standard deviation from sample (σ)
+n <- 60
+mu_0 <- 0
+sigma <- sd
+
+pnorm(x.bar, mean = 0, sd = sd/sqrt(n), lower.tail=FALSE)
+```
+
+You ignored the alternative hypothesis. You decided that there are only two possible worlds. Anything against null ~ for the alternative. Proof by contradiction. ~ Logical Fallacy
+
+2. Calculate the likelihood ratio test for this hypothesis. What conclusion do you reach? Does that seem right?
+```{r}
+# Likelihood under H0: mu = 0
+L_H0 <- exp(sum(dnorm(x, mean = 0, sd = sigma, log = TRUE)))
+
+# Likelihood under H1: mu = 20
+L_H1 <- exp(sum(dnorm(x, mean = 20, sd = sigma, log = TRUE)))
+
+# Calculate the Likelihood Ratio
+lrt <- L_H0 / L_H1
+lrt
+```
+
+exp(sum(log(probabilities))) due to vanishing gradient.
+
+3. Calculate the Bayes factor for this hypothesis. What conclusion do you reach? Does that seem right?
+```{r}
+
+# Calculate Bayes Factor
+BF <- L_H1 / L_H0
+
+# Prior odds (2 to 1 against H1 means prior odds of H1 = 1/2)
+prior_odds <- 1 / 2
+
+# Posterior odds
+posterior_odds <- BF * prior_odds
+
+# Output Bayes Factor and Posterior Odds
+list(BF = BF, Posterior_Odds = posterior_odds)
+
+```
+4. Now repeat (1) but use x<-rnorm(60, mean=1, sd=.1)
+
+Is this evidence better or worse for the alternative hypothesis?
+```{r}
+# Step 4: Generate new data with mean = 1, sd = 0.1
+set.seed(1234)
+x <- rnorm(60, mean=1, sd=.1)
+x.bar <- mean(x)
+sd <- sd(x)
+
+# Assuming known standard deviation from sample (σ)
+n <- 60
+mu_0 <- 0
+sigma <- sd
+
+pnorm(x.bar, mean = 0, sd = sd/sqrt(n), lower.tail=FALSE)
+```

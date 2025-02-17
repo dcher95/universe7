@@ -1,0 +1,85 @@
+---
+title: "QPM II - Class Session 26"
+output: pdf_document
+date: "2024-11-11"
+---
+
+```{r setup, include=FALSE}
+library(haven)
+library(dplyr)
+library(sjPlot)
+library(ggplot2)
+df <- read.csv("gender_data.csv")
+```
+
+Fit an OLS model using pol_participation as the outcome variable. Include a two-way interaction term of age and gender. Write down the model specification in latex. Plot the interaction effects. Are the marginal effects different between males and females? Run the summary() function on your model. Interpret the plot and the coefficients.
+
+```{r}
+
+# Fit the OLS model
+model <- lm(pol_participation ~ age * gender + higher_edu + income_chng + polinterest +
+              home_child + income + infection + self_esteem + pol_participation_past, 
+            data = df)
+
+# Display the summary of the model
+summary(model)
+
+# Plot interaction effects
+plot_model(model, type = "int", terms = c("age", "gender")) +
+  labs(title = "Interaction Effect of Age and Gender on Political Participation",
+       x = "Age", y = "Political Participation") +
+  theme_minimal()
+
+```
+```{r}
+
+# Fit the model with three-way interaction
+model_three_way <- lm(pol_participation ~ age * gender * polinterest + higher_edu + 
+                      income_chng + home_child + income + infection + 
+                      self_esteem + pol_participation_past, data = df)
+
+# Summary of the model
+summary(model_three_way)
+
+```
+Create a new column change_participation which is the difference between pol_participation
+and pol_participation_past. Use change_participation as the outcome variable. Form your own
+hypothesis. Fit an OLS model with predictors and interaction terms of your choice. Plot the marginal
+effects and interpret the results.
+```{r}
+
+df$change_participation <- df$pol_participation - df$pol_participation_past
+
+model_change <- lm(change_participation ~ polinterest * gender + self_esteem + 
+                   age + higher_edu + income_chng + home_child + 
+                   infection + income, data = df)
+
+# Summary of the model
+summary(model_change)
+
+plot_model(model_change, type = "pred", terms = c("polinterest", "gender")) +
+  labs(title = "Marginal Effects of Political Interest on Change in Participation",
+       x = "Political Interest", y = "Change in Political Participation",
+       color = "Gender") +
+  theme_minimal()
+
+```
+```{r}
+df$age_level <- ifelse(df$age < median(df$age, na.rm = TRUE), "young", "old")
+df$age_level <- as.factor(df$age_level)
+
+model_logit <- glm(gender ~ age_level * pol_participation + higher_edu + 
+                   income_chng + home_child + infection + income + 
+                   self_esteem + pol_participation_past, 
+                   family = binomial(link = "logit"), data = df)
+
+# Summary of the model
+summary(model_logit)
+
+plot_model(model_logit, type = "pred", terms = c("pol_participation", "age_level")) +
+  labs(title = "Marginal Effects of Political Participation and Age Level on Gender",
+       x = "Political Participation", y = "Predicted Probability of Gender (Female)",
+       color = "Age Level") +
+  theme_minimal()
+
+```

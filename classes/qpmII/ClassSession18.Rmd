@@ -1,0 +1,102 @@
+---
+title: "QPM II - Class Session 17"
+output: pdf_document
+date: "2024-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if (!require("sjPlot")) install.packages("sjPlot", dependencies = TRUE)
+
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(sjPlot)
+```
+
+1. The demo video does not remove records for which the feeling thermometers are not in the range between 0 and 100.
+• How many records do not have appropriate feeling thermometer values?
+• Remove those records and run the logistic regression again. Check if there is any difference in the summary.
+
+```{r}
+data <- read_csv("dataset-anes-2012-subset1.csv")
+
+# Count number of records with invalid thermometer values
+num_invalid_records <- data %>%
+  filter(!(ft_dem >= 0 & ft_dem <= 100 &
+           ft_rep >= 0 & ft_rep <= 100)) %>%
+  nrow()
+
+print(paste("Number of records with invalid feeling thermometer values:", num_invalid_records))
+
+# Remove rows with invalid thermometer values
+data_clean <- data %>%
+  filter(ft_dem >= 0 & ft_dem <= 100,
+         ft_rep >= 0 & ft_rep <= 100)
+
+# Run logistic regression
+logistic_model <- glm(vote_obama ~ ft_dem + ft_rep + income + sex + other + black + hispanic,
+                      data = data_clean, family = "binomial")
+
+# Print the summary of the model
+summary(logistic_model)
+```
+2. Draw the logistic regression plot with 95% confidence intervals and the accompanying rug representa- tion. The independent variable in question is ft_dem. Hold all other variables at the mean value. The plot will look like this:
+```{r}
+# c(0, 100) equal interval
+ft_dem_seq <- data.frame(ft_dem = seq(min(0, na.rm = TRUE), max(100, na.rm = TRUE), length.out = 100))
+
+# mean of other predictor variables
+mean_values <- data_clean %>%
+  summarise(across(c(ft_rep, income, sex, other, black, hispanic), mean, na.rm = TRUE))
+
+# bind(seq, mean_values)
+predict_data <- ft_dem_seq %>%
+  bind_cols(mean_values)
+
+# Predicted probs & standard errors
+predictions <- predict(logistic_model, newdata = predict_data, type = "response", se.fit = TRUE)
+
+# Compute confidence intervals
+predict_data <- predict_data %>%
+  mutate(predicted_prob = predictions$fit,
+         lower = predictions$fit - 1.96 * predictions$se.fit,
+         upper = predictions$fit + 1.96 * predictions$se.fit)
+
+ggplot(predict_data, aes(x = ft_dem, y = predicted_prob)) +
+  geom_line(color = "blue") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  labs(x = "Feeling Thermometer for Democrats (ft_dem)", y = "Predicted Probability") +
+  theme_minimal()
+
+# Can add the rug, but probably only works in base R.
+
+```
+
+
+3. Draw the marginal effect plots with 4 terms: income (the values on x-axis), ft_rep, race, and sex. You
+may need to install the mfx package.
+• What patterns do you see?
+• Redraw the plot to limit the ft_rep to be [0, 25, 50, 75, 100], race to be white and other, and sex
+to be female only.
+
+```{r}
+logistic_model2 <- glm(vote_obama ~ ft_rep + income + sex + race,
+                      data = data_clean, family = "binomial")
+
+plot_model(logistic_model2, type = "pred", terms = c("income", "ft_rep", "race", "sex"))
+
+# Now with filtered data
+filtered_data <- data_clean %>%
+  filter(ft_rep %in% c(0, 25, 50, 75, 100),
+         race %in% c(1, 4),
+         sex == 1)
+
+filtered_logistic_model2 <- glm(vote_obama ~ ft_rep + income + sex + race,
+                      data = filtered_data, family = "binomial")
+
+plot_model(filtered_logistic_model2, type = "pred", terms = c("income", "ft_rep", "race", "sex"))
+
+
+```

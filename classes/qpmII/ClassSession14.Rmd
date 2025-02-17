@@ -1,0 +1,138 @@
+---
+title: "ClassSession14"
+output: html_document
+date: "2024-10-27"
+---
+
+## Assuming the null hypothesis is true, simulate n = 40 with sigma = 2. Calculate p-value.
+
+```{r}
+set.seed(12345)
+n = 40
+mu = 0
+sigma = 2
+null_mu = 0
+
+data = rnorm(n, mean = mu, sd = sigma)
+print(1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n)))
+```
+
+## Repeat 400 times
+
+```{r}
+N = 400
+n = 40
+mu = 0
+sigma = 2
+null_mu = 0
+
+ps = rep(0, N)
+for (i in 1:N){
+  data = rnorm(n, mean = mu, sd = sigma)
+  ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+}
+plot(density(ps))
+```
+
+## Assume that the null hypothesis is False. What percent of the time do you reject? What is that called?
+### Power! Reject 94% of the time. 
+```{r}
+
+N = 400
+n = 40
+mu = 1
+sigma = 2
+null_mu = 0
+
+ps = rep(0, N)
+for (i in 1:N){
+  data = rnorm(n, mean = mu, sd = sigma)
+  ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+}
+
+plot(density(ps))
+
+print(sum(ps<=0.05)/N)
+```
+
+## Range of values for the true μ. At each value, calculate the probability of rejecting. Plot that. What’s that called?
+### Power Curve!
+```{r}
+num_mus=20
+mus = seq(from = 0, to = 2, length.out = num_mus)
+powers = rep(0, num_mus)
+
+for(k in 1:num_mus){
+  N = 400
+  n = 40
+  mu = mus[k]
+  sigma = 2
+  null_mu = 0
+  ps = rep(0, N)
+  
+  for (i in 1:N){
+    data = rnorm(n, mean = mu, sd = sigma)
+    ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+  }
+  
+  powers[k] = sum(ps<=0.05)/N
+}
+plot(1:num_mus, powers)
+```
+
+## now fix μ and alter the sample size.
+```{r}
+
+M = 20
+mu = 1
+ns = seq(from = 10, to = 200, length.out = M)
+powers = rep(0, M)
+
+for(k in 1:M){ 
+  N = 400
+  n = ns[k] 
+  sigma = 2 
+  null_mu = 0
+  ps = rep(0, N)
+  
+  for (i in 1:N){
+    data = rnorm(n, mean = mu, sd = sigma)
+    ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+  }
+  
+  powers[k] = sum(ps<=0.05)/N
+}
+plot(1:M, powers)
+```
+
+## now alter σ2
+```{r}
+M = 20
+mu = 1
+sigmas = seq(from = 1, to = 10, length.out = M)
+powers = rep(0, M)
+
+for(k in 1:M){ 
+  N = 400
+  n = 40
+  sigma = sigmas[k]
+  null_mu = 0
+  ps = rep(0, N)
+  for (i in 1:N){
+    data = rnorm(n, mean = mu, sd = sigma)
+    ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+  }
+  
+  powers[k] = sum(ps<=0.05)/N
+}
+plot(1:M, powers)
+```
+
+## Drug Dosage Problem
+```{r}
+p_vec = c(0.1, 0.4, 0.5, 0.6, 0.7, 0.8)
+power_vec = c(1, 0.979, 0.86, 0.584, 0.228, 0.032)
+
+plot(p_vec, power_vec, type="l", xlab = "Probability, p", ylab = "Power")
+
+```

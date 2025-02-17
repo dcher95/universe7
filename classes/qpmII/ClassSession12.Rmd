@@ -1,0 +1,119 @@
+---
+title: "Class Session 12: Non-parametric inference"
+output: pdf_document
+date: "2024-10-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2) 
+library(dplyr)
+library(boot)
+
+set.seed(42)
+```
+
+
+```{r}
+x = c(1, 2, 4, 2, 3, 6, 2, 5)
+y = c(3, 1, 7, 4, 5, 2, 3, 4)
+
+z_value <- 1.96
+```
+
+Number 1: Calcuate the 95% CI
+
+```{r , echo=FALSE}
+
+x_mean <- mean(x)
+
+se <- sd(x) / sqrt(length(x)-1)
+
+lower_bound <- x_mean - z_value * se
+upper_bound <- x_mean + z_value * se
+
+ci <- c(lower_bound, upper_bound)
+```
+
+Number 2: Bootstrap and Jack-knife
+
+```{r}
+
+# Bootstrap
+# bootstrap_mean <- function(data, indices) {
+#  mean(data[indices])
+#}
+# boot_res <- boot(x, statistic = bootstrap_mean, R = 1000)
+# boot_ci_se <- boot.ci(boot_res, type = "norm")
+# boot_ci_quantile <- quantile(boot_res$t, probs = c(0.025, 0.975))
+
+replications<-2000
+x.bars<- rep(NA, replications)
+for(i in 1:replications){
+  x.bars[i]<-mean(sample(x, length(x), replace=TRUE))
+}
+quantile(x.bars, probs = c(0.025, 0.975))
+lower_bound <- mean(x) - sd(x.bars)
+upper_bound <- mean(x) + sd(x.bars)
+
+boot_ci <- c(lower_bound, upper_bound)
+
+
+
+# Jack-knife
+jack_means <- numeric(length(x)) 
+# x.bars<- rep(NA, length(x))
+for (i in 1:n) {
+  jack_means[i] <- mean(x[-i]) 
+}
+jack_mean <- mean(jack_means)
+se_jack <- sqrt((n - 1) * mean((jack_means - jack_mean)^2))
+lower_bound <- mean(x) - z_value * se_jack
+upper_bound <- mean(x) + z_value * se_jack
+
+jack_bounds <- c(lower_bound, upper_bound)
+
+plot(ecdf(x), main = "ECDF of x", xlab = "x", ylab = "ECDF")
+
+
+plot(ecdf(boot_res$t), main = "ECDF of Bootstrap", xlab = "x", ylab = "ECDF")
+plot(ecdf(jack_means), main = "ECDF of Jack-knife", xlab = "x", ylab = "ECDF")
+
+```
+Number 3: Boostrap to calculate 95% CI for the correlation
+
+```{r}
+replications<-2000
+correlations<- rep(NA, replications)
+for(i in 1:replications){
+  mysample<-sample(1:length(x), length(x), replace=TRUE)
+  correlations[i]<-cor(x[mysample], y[mysample])
+}
+# DO STUFF HERE
+
+
+quantile(x.bars, probs = c(0.025, 0.975))
+lower_bound <- mean(x) - sd(x.bars)
+upper_bound <- mean(x) + sd(x.bars)
+
+boot_ci <- c(lower_bound, upper_bound)
+
+
+bootstrap_correlation <- function(data, indices) {
+  x_boot <- data[indices, 1]
+  y_boot <- data[indices, 2]
+  
+  return(cor(x_boot, y_boot))
+}
+
+data <- data.frame(x, y)
+
+boot_res <- boot(data = data, statistic = bootstrap_correlation, R = 1000)
+boot_ci_se <- boot.ci(boot_res, type = "norm")
+boot_ci_quantile <- boot.ci(boot_res, type = "perc")
+
+boot_ci_quantile
+```
+
+

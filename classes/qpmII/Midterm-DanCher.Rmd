@@ -1,0 +1,58 @@
+---
+title: "Midterm - DanCher"
+author: "Dan Cher"
+date: "2024-10-28"
+output: pdf_document
+---
+
+## Problem 3
+
+```{r}
+set.seed(42)
+
+x <- c(10,3,4,1,2,6,3)
+n <- length(x)
+
+replications <- 2000
+
+bootstrap_means <- rep(NA, replications)
+for (i in 1:replications) {
+  sample_x <- sample(x, length(x), replace = TRUE)
+  bootstrap_means[i] <- sum(sample_x) / (2 - sum(sample_x))
+}
+
+# Calculate Bootstrap SE
+bootstrap_se <- sd(bootstrap_means)
+
+cat("Bootstrap SE for p:", bootstrap_se, "\n")
+```
+
+# Problem 4
+
+```{r}
+# Parameters
+n <- 30  
+p_null <- 0.4  # null hypothesis proportion
+alpha_level <- 0.05 # This is wrong. I'm not sure how this should be set up... But the following code would be how you calculate it if you have a correct rejection threshold.
+
+# single call
+p_value <- 0.4
+beta <- 1 - pbinom(alpha_level, n, p_value)
+power_value <- 1 - beta
+cat("Power Value", power_value, "\n")
+
+# (a) Type I Error (α)
+# Calculate the probability of Type I error
+alpha <- pbinom(alpha_level, n, p_null)
+cat("Type I Error (α):", alpha, "\n")
+
+# (b) Type II Error (β) for p = 0.6
+p_alternative_1 <- 0.4
+beta_1 <- 1 - pbinom(alpha_level, n, p_alternative_1)
+cat("Type II Error (β) :", beta_1, "\n")
+
+```
+
+Type I error rate is the probability of rejecting the null hypothesis when it is true. This means the probability that we will reject the initial null hypothesis of the standardized treatment effect being 0.4 when it is actually true.
+
+Type II error rate is the probability of failure to reject the null hypothesis when it is false. In this circumstance, that would mean the probability that we do not reject the null hypothesis of the standard treatment effect being 0.4 when it is actually false. 

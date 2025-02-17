@@ -1,0 +1,181 @@
+---
+title: "Final Exam"
+output: pdf_document
+date: "2024-12-17; 12:30 PM ~5:20 PM (with breaks)"
+author: "Dan Cher"
+---
+
+## Mechanical Turk Analysis
+
+```{r setup, include=FALSE}
+library(haven)
+library(dplyr)
+library(sjPlot)
+library(ggplot2)
+library(estimatr)
+library(rstan)
+
+mechturk_data <- read.csv("MechanicalTurk.csv")
+unsc_data <- read.csv("UNSC.csv")
+```
+
+### 1. First let’s use BMI as our outcome variable of interest. We are interested in understanding if master workers are different than other workers when it comes to BMI. Fit a standard (classical) linear regression model to this data. You can go ahead and just control for all of the covariates (except exercise).
+
+#### a. Interpret the results. We are particularly interested in the results for the TurkMaster. Be sure to provide a correct interpretation for the p-values/stars. What conclusions do you draw about whether master workers are different when it comes to BMI?
+
+```{r}
+# fit model
+model <- lm(bmi ~ TurkMaster + agecat + race_cat + female + income_cat, data = mechturk_data)
+
+# view summary stats
+summary(model)
+```
+
+Overall, the adjusted R-squared is quite low (~0.02). Only ~2% of the variance in BMI is explained using the linear model defined above. This suggests that are other factors that are impactful in determining BMI not integrated in the model. 
+
+Understanding this limitation, the results of specific variables show a few variables of interest that are statistically significant. Specifically TurkMaster and race_cat have p-values below 0.05. P-value meaning that the coefficient results for these variables that we empirically derived have a probability lower than 5%, assuming the null hypothesis, which is that these regression coefficients = 0, is true. Since we specifically care about TurkMaster, we can say that TurkMaster has a strong positive relationship in association with BMI of Mechanical Turk workers. Whether the worker is a master is associated with a 1.0635 unit increase in BMI compared to non-masters. 
+
+#### b. Thinking about this data, discuss two ways that the inferences you draw from this standard regression might be invalid. Focus on the kinds of assumptions we need to make to do inference in a classical/frequentist setting.
+
+1. Autocorrelation issues
+The frequentist model assumes that residuals are i.i.d (independent and identically distributed). In this case the errors are likely correlated based on the region of living, or demographics of the workers that are not captured in the data. Once this assumption is violated, the inferences drawn from this model are no longer valid. To deal with this, you would likely need to incorporate clustered standard errors.
+
+2. Multicollinearity
+The frequentist model assumes that variables are not correlated. Age, income and race are all variables that are known to be highly correlated. Highly correlated variables make the results of the model not reliable. Incorporating a bayesian framework with prior distributions can help deal with this type of issue.
+
+More generally, the inferences drawn from this type of framework are hand-cuffed in their direct interpretability. Bayesian frameworks allow us to more directly express the likelihood of our results, rather than relying on a long-run frequency that requires an unbiased sampling process (even in ways that may not be relevant to our data).
+
+### 2. In problem 1, you made use of the Null Hypothesis Significance Testing framework. Answer the questions below focusing again on the TurkMaster variable.
+
+#### a. Define the null and alternative hypothesis for this test.
+
+The null hypothesis is that the coefficient of the Turkmaster variable == 0. This means there is no difference between masters and non-masters. The alternative hypothesis is that there is a difference between masters and non-masters.
+
+#### b. Explain what the p-value is and what it means in the context of this regression.
+
+In this context, p-value means that the coefficient results for Turkmaster that we empirically derived have a probability lower than 5% of being this extreme or more, assuming the null hypothesis, which is that Turkmaster regression coefficient = 0, is true.
+
+#### c. What is the type-I error rate of the test you used to determine whether or not the variable was “significant.”
+
+The type-I error rate is probability of rejecting the null hypothesis when it is actually true. In this context that means the likelihood of concluding there is a signficant association between Turkmaster and BMI when no association actually exists. Here we used 0.05 (5%).
+
+#### d. The significance test here is calculated simply by taking the coefficient and dividing by the standard error to derive a t-statistic with n-p degrees of freedom. Assume that the standard errors are fixed and plot the “power curve” for different values of $\beta$. Is your test well powered? Why or why not?
+
+```{r}
+# params
+beta_hat <- 1.0635
+SE <- 0.4391
+alpha <- 0.05
+t_critical <- qnorm(1 - alpha / 2)
+
+# power for test-statistic found in glm
+power_test <- 1 - (pnorm(t_critical, mean = beta_hat / SE, sd = 1) - 
+              pnorm(-t_critical, mean = beta_hat / SE, sd = 1))
+
+# power curve for different betas
+beta_range <- seq(0, 3, by = 0.1)
+power <- 1 - (pnorm(t_critical, mean = beta_range / SE, sd = 1) - 
+              pnorm(-t_critical, mean = beta_range / SE, sd = 1))
+
+# plot
+plot(beta_range, power, type = "l", col = "blue", lwd = 2,
+     xlab = "Actual Beta", ylab = "Power",
+     main = "Power Curve for TurkMaster Variable")
+abline(v = beta_hat, col = "green", lty = 2)  
+legend("bottomright", legend = c("Power Curve", "Beta Hat"),
+       col = c("blue",  "green"), lty = c(1, 2), lwd = c(2, 1))
+
+cat("Power:", power_test)
+```
+
+The power of our test is 0.678. This is generally considered not well powered, as 0.80 is the threshold for a well-powered test. There is a 67% chance of correctly rejecting the null hypothesis if the true effect size of the coefficient = 1.0635. 
+
+### 3. Your co-author theorizes that the differences in BMI could be a result of differing lifestyles. Perhaps master workers are more (or less) likely to exercise.
+#### a. Fit an appropriate generalized linear model using exercise as the dependent variable.
+```{r}
+
+# remove NAs
+mechturk_data_clean <- mechturk_data[!is.na(mechturk_data$exercise), ]
+
+# logistic regression b/c exercise is binary variable
+glm_model <- glm(exercise ~ TurkMaster + agecat + race_cat + female + income_cat, 
+                 data = mechturk_data_clean, 
+                 family = binomial(link = "logit"))
+
+summary(glm_model)
+
+mechturk_data_clean$predicted_probs <- predict(glm_model, type = "response")
+
+# plot
+ggplot(mechturk_data_clean, aes(x = factor(TurkMaster), y = predicted_probs, color = factor(TurkMaster))) +
+  geom_boxplot() +
+  labs(x = "TurkMaster status (0 = non-master, 1 = master)", 
+       y = "Predicted Probability of Exercising", 
+       color = "TurkMaster status") +
+  theme_minimal()
+
+cat('Odds ratio of TurkMaster:', exp(glm_model$coefficients[2]))
+```
+#### b. Write one paragraph interpreting these results to the readers of a hypothetical article. Explain what the “effect size” is. Provide a plot to help the reader understand what your model says.
+
+To examine the relationship between various factors and their effects on exercise for employees of mechanical turk, we conducted an analysis using a logistic regression model. The model reveals the likelihood of exercising is significantly associated with whether the employee is a "master" worker as compared to a regular worker. Specifically, masters are less likely to exercise with an odds ratio of 0.70, meaning they are 30% less likely to exercise compared to their non-master counterparts. Our plot shows the predicted probabilities of exercising based on whether the worker is master/non-master. To interpret the model we typically care about the "effect size" which for a logistic regression refers to the odds ratio for each predictor. This quantifies the change in the odds of exercising associated with a one unit-change in our variable -- for our case, non-master as compared to master. The attached boxplot shows the differing distributions of predicted probabilities of exercising on whether the worker is master or not.
+
+## United Nations Security Council
+
+### 4. Using the lm_robust function, fit a model that (a) includes fixed effects for each country and separate fixed effects for each year and (b) has clustered standard errors at the country level. The only other covariate you need is l_pctagreeus_unga.
+
+```{r}
+
+# model w/ fixed effects on country & year + clustered SE 
+fe_model <- lm_robust(DependentVariable ~ l_pctagreeus_unga + factor(wdicode) + factor(year),
+                   data = unsc_data,
+                   clusters = unsc_data$wdicode)
+
+summary(fe_model)
+
+```
+
+#### 5. Now fit a Bayesian linear model with random intercepts (not slopes) for each country and year. Be sure to carry out appropriate diagnostics. Compare your results to those above. (Note: You may end up with more countries in this analysis than in problem 4. Countries that only appear in the dataset once may be dropped from the fixed effects model depending on how you implemented it.)
+
+```{r}
+
+unsc_data_clean <- unsc_data %>%
+  filter(complete.cases(.))
+
+stan_data <- list(
+  N = nrow(unsc_data_clean),
+  C = length(unique(unsc_data_clean$wdicode)),
+  Y = length(unique(unsc_data_clean$year)),
+  country = as.integer(factor(unsc_data_clean$wdicode)),
+  year = as.integer(factor(unsc_data_clean$year)),
+  l_pctagreeus_unga = unsc_data_clean$l_pctagreeus_unga,
+  DependentVariable = unsc_data_clean$DependentVariable
+)
+
+# Fit the model
+fit <- stan(
+  file = "RandomIntercepts.stan",
+  data = stan_data,
+  warmup = 500,
+  iter = 2000,
+  chains = 2,
+  seed = 42
+)
+
+```
+When comparing the models, I will specifically focus on countries and years, and compare at the statistically significant level of $\alpha$ < 0.05 for the fixed effects model, and generally look at 95% credible interval for the bayesian approach.
+
+From a country perspective, the fixed effects model highlights a few countries as being statistically significant from the base country (Argentina) in their voting against the US in the UNSC. The countries that were statistically significant with the largest effect sizes were Checkoslavakia, Lebanon, India, Poland, Sweden and Ukraine. Among those Poland was the only one that had large negative coefficients indicating it is more likely to vote with the US. Compared to the bayesian model, Poland (alpha_country[33]) has a 95% credible interval that spans [-0.09, 0.13], showing that there is no definitive likelihood with Poland voting for or against US. Among the others with positive coefficients, the countries that showed consistent effect sizes between models were Ukraine (alpha_country[40]) and India (alpha_country[17]), indicating that these countries were more likely to vote against the US in the UNSC.
+
+From the years perspective, the fixed effects model highlights 1953 as being significantly different from the base year of 1965. When I compare this to the stan model, the year 1953 (alpha_year[7]) has a 95% credible interval that spans [-0.19, -0.001]. Here we see some consistency between the models, as the fixed effects model insuated that the likelihood of a country voting against the US in the UNSC was significantly lower than in the baseline year, and the bayesian credible interval showed the statistic credible interval to be negative as well. The consistency makes this insuation seem more conclusive.
+
+One additional note is regarding Lagged percent ideological agreemenent with the USA. Both models showed a negative association compared to the Dependent variable, but the fixed effects model had a p-vale ~ 0.12. So the evidence that it is a negative association is weak, but arguable since it does show a credible interval of [-0.68, -0.38], which indicates a large effect size.
+
+In addition, the traceplot, effective sample size, and Rhat below show that the stan model converged, allowing for reliable diagnostics.
+
+
+```{r}
+print(fit, pars = c("alpha", "beta_l_pctagreeus_unga", "sigma", "sigma_country", "sigma_year"))
+traceplot(fit, pars = c("alpha", "beta_l_pctagreeus_unga", "sigma", "sigma_country", "sigma_year"))
+print(summary(fit)$summary)
+```

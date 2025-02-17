@@ -1,0 +1,204 @@
+---
+title: "Class Session 21"
+author: "Dan Cher"
+date: "2024-11-13"
+output: html_document
+---
+
+
+```{r}
+library(readr)
+library(haven)
+library(rstan)
+library(ggplot2)
+library(dplyr)
+library(bayesplot)
+```
+
+```{r}
+
+dat <- read_dta("../class20/hierarchypaperdata.dta")
+
+## Let's look at a plot for women's empowerment
+plot(density(dat$polempowerment, na.rm=TRUE))
+rug(dat$polempowerment)
+```
+
+```{r}
+
+cleaned_data <- dat %>%
+  select(polempowerment, warDummy, year, country_name) %>%  # Select required variables
+  na.omit() %>%  # Remove rows with missing values
+  mutate(country_code = as.numeric(as.factor(country_name))) %>%  # Convert country_name to numeric codes
+  filter(country_code <= 15) %>%  # Keep only the first 15 countries observed
+  select(-country_name)
+
+ggplot(cleaned_data, aes(x = year, y = polempowerment, color = factor(country_code), group = country_code)) +
+  geom_line() +
+  labs(
+    title = "Women's Empowerment (polempowerment) Over Time",
+    x = "Year",
+    y = "Women's Empowerment",
+    color = "Country Code"
+  )
+
+```
+```{r}
+
+simple_data <- list(
+  N = nrow(cleaned_data),  
+  J = length(unique(cleaned_data$country_code)),  # # of country codes
+  y = cleaned_data$polempowerment,  
+  X = cleaned_data$warDummy,  
+  cc = cleaned_data$country_code,  # country code
+  year = cleaned_data$year  
+)
+
+HierstanFit1<-stan(
+ file="HierLM.stan",
+ data=simple_data,
+ chains=3,
+ warmup=1000,
+ iter = 4000,
+ cores=1
+)
+
+```
+```{r}
+summary(HierstanFit1)$summary
+```
+
+Diagnose the model
+```{r}
+
+# Check model diagnostics
+# print(HierstanFit1, pars = c("lp__", "sigma", "beta")) 
+print(summary(HierstanFit1), digits = 2)
+stan_trace(HierstanFit1)  
+stan_diagnostics(HierstanFit1) 
+
+# Check effective sample size and R-hat values
+print(HierstanFit1, probs = c(0.025, 0.975))
+
+# Posterior predictive checks 
+y_rep <- extract(HierstanFit1)$y_rep  # Extract posterior predictive samples
+ppc_dens_overlay(y = cleaned_data$y, yrep = y_rep[1:100, ])  # Compare observed vs. simulated data
+
+```
+
+
+
+
+```{r}
+
+## Step 1) Set up your data -- take care of your missing values
+data4stan<-dat_2000[,c("polempowerment", "cleanelec", "polity", "lpop", "neighborpolempowerment")]
+data4stan<-data4stan[complete.cases(data4stan),]
+
+## Step 2) Write your model
+
+## Step 3) Set up data so it works with the model
+
+simple_data<-list(
+  N=nrow(data4stan),
+  y=data4stan$polempowerment,
+  x=data4stan$polity
+)
+
+## Step 4) Run the model
+stanFit1<-stan(
+ file="SimpleLM.stan",
+ data=simple_data,
+ chains=3,
+ warmup=200,
+ iter=1000,
+ cores=1
+)
+
+## Step 5) Diagnose the model
+
+## (A later video)
+
+## Step 6) Summarize results
+
+summary(stanFit1)$summary
+
+## Let's compare
+summary(lm(polempowerment~polity, data=dat_2000))
+
+```
+Let's try a multivariate model
+```{r}
+
+## Need to set up the design matrix with a constant
+X=data4stan[,c(2:5)]
+X<-cbind(1, X)
+colnames(X)[1]<-"Constant"
+
+## Now set up the data
+multi_data<-list(
+  N=nrow(data4stan),
+  K=ncol(X),
+  y=data4stan$polempowerment,
+  X=X
+)
+
+## Let's run it!
+stanFit2<-stan(
+  file="SimpleLM2.stan",
+  data=multi_data,
+  chains=3,
+  warmup=200,
+  iter=1000,
+  cores=1
+)
+
+summary(stanFit2)$summary[1:6,]
+
+```
+
+
+
+
+
+
+```{r}
+## Now let's have some fun
+
+## What if we wanted student-t errors instead of normal?
+## And what if instead, our main question was about the distribution of 
+## 2*beta1-beta5?
+
+
+## Now set up the data (Use = and not <-)
+t_data<-list(
+  N=nrow(data4stan),
+  K=ncol(X),
+  y=data4stan$polempowerment,
+  X=X,
+  scale_beta=rep(3.0, 5),
+  loc_sigma=1
+)
+
+
+# Let's run it!
+stanFit3<-stan(
+  file="TDistLM.stan",
+  data=t_data,
+  chains=3,
+  warmup=200,
+  iter=1000,
+  cores=1
+)
+
+## Compare?
+summary(stanFit3)$summary[1:6,]
+summary(stanFit2)$summary[1:6,]
+
+
+## let's find our quantity
+tail(summary(stanFit3)$summary)
+
+
+
+```

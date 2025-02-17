@@ -1,0 +1,150 @@
+---
+title: "QPM II - Class Session 17"
+output: pdf_document
+date: "2024-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(webuse)
+library(dplyr)
+nlswork_orig <- webuse('nlswork')
+```
+
+1. To keep the data size limited, we will only work with a subset of the data. Please clean the data following the steps below:
+1) subset to subjects with IDs from 1 to 100.
+2) only keep columns (idcode, year, ln_wage, age, tenure, union) 3) remove missing values
+After the cleaning steps, you should have 82 subjects (unique idcode) in your dataset. You can do some descriptive analysis to help understand the dataset. (like using the str() or summary() functions)
+
+```{r}
+nlswork_clean <- nlswork_orig %>%
+  filter(idcode >= 1 & idcode <= 100) %>%
+  select(idcode, year, ln_wage, age, tenure, union) %>%
+  na.omit()
+
+# Display the cleaned dataset
+summary(nlswork_clean)
+
+n_distinct(nlswork_clean$idcode)
+```
+2. Find the range of the number of times each subject was surveyed during the time period.
+```{r}
+survey_range <- nlswork_clean %>%
+  group_by(idcode) %>%
+  summarise(survey_count = n()) %>%
+  summarise(range_min = min(survey_count), range_max = max(survey_count))
+
+survey_range
+
+```
+
+3. Calculate the mean and SD of the DV. Plot a histogram to show the distribution of the DV.
+```{r}
+# Calculate the mean and standard deviation of ln_wage
+dv_stats <- nlswork_clean %>%
+  summarise(mean_ln_wage = mean(ln_wage, na.rm = TRUE),
+            sd_ln_wage = sd(ln_wage, na.rm = TRUE))
+
+# Display mean and standard deviation
+dv_stats
+
+# Plot histogram of ln_wage
+hist(nlswork_clean$ln_wage,
+     main = "ln_wage", 
+     xlab = "ln_wage", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black",
+     breaks = 30,
+     xlim = c(0, 5))
+
+```
+4. For each subject (idcode) separately, calculate the mean and SD of the DV (nlswork$ln_wage) for that subject. Plot a histogram to show the distribution of these subject-specific means of the DV. Compare with the histogram in 3.
+```{r}
+subject_stats <- nlswork_clean %>%
+  group_by(idcode) %>%
+  summarise(mean_ln_wage = mean(ln_wage, na.rm = TRUE),
+            sd_ln_wage = sd(ln_wage, na.rm = TRUE))
+
+# Display the subject-specific means and SDs
+subject_stats
+
+# Step 2: Plot histogram of the subject-specific means of ln_wage
+hist(subject_stats$mean_ln_wage, 
+     main = "Subject-Specific Means of ln_wage", 
+     xlab = "Mean ln_wage", 
+     ylab = "Frequency", 
+     col = "lightgreen", 
+     border = "black",
+     breaks = 30,
+     xlim = c(0, 5))
+```
+Means are more spread out than expected. Draws would creater a tighter, normal distribution.
+
+5. Compare the SD of the subject-specific means with the mean of the SDs calculated from each subjects’ repeated measures. What does this show? You can use na.rm to remove NA values.
+```{r}
+# Step 1: Calculate the SD of the subject-specific means
+sd_of_means <- sd(subject_stats$mean_ln_wage, na.rm = TRUE)
+
+# Step 2: Calculate the mean of the subject-specific SDs
+mean_of_sds <- mean(subject_stats$sd_ln_wage, na.rm = TRUE)
+
+# overall
+sd_of_means
+
+# within-unit
+mean_of_sds
+
+```
+Spread within-unit is much less than you would expect if it was true random sampling.
+
+The SD of subject-specific means (0.4038) is higher than the mean of subject-specific SDs (0.2221), which indicates that there is more variability in the average ln_wage across subjects than within each subject's repeated measures over time. This suggests that between-subject differences in wages (e.g., due to factors like occupation, experience, or education) are more pronounced than within-subject wage fluctuations over the observed period.
+
+In other words, individuals tend to have relatively stable wages over time, but there is substantial variability in wages across different individuals.
+
+
+6. In OLS, we assume that the regression model errors are independent. Is this true here? If not, explain why this could be a problem.
+```{r}
+m1 <- lm(ln_wage ~ age + tenure + union + tenure:union + idcode,
+         data = nlswork_clean)
+
+# idcode included as the fixed effect variable.
+summary(m1)
+```
+Yes it is violated.
+
+This repeated structure implies that errors are likely correlated within each subject because an individual's wages over time are not entirely independent from their previous wages.
+
+
+7. Find the standard errors. You can filter out the subject-specific means (the FE coefficients).
+```{r}
+summary_m1 <- summary(m1)
+
+coef_se <- summary_m1$coefficients
+coef_se_filtered <- coef_se[!grepl("idcode", rownames(coef_se)), ]
+
+# Display the filtered coefficients and their standard errors
+coef_se_filtered
+```
+
+```{r}
+library(estimatr)
+
+# Fit the model with clustered standard errors
+m1_clustered <- lm_robust(ln_wage ~ age + tenure + union + tenure:union, 
+                           data = nlswork_clean, 
+                           clusters = idcode)
+
+# Summary of the model with clustered standard errors
+summary(m1_clustered)
+```
+Intercept:
+
+OLS SE: 0.0171
+Clustered SE: 0.1415
+The clustered standard error is significantly larger, suggesting that the OLS model may have underestimated the uncertainty around the intercept due to ignoring the correlation of errors within subjects.
+
+For all the different coefficients, the standard error is much larger for standard errors.
+
+

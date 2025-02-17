@@ -1,0 +1,237 @@
+---
+title: "QPM II: Problem Set 5"
+output: pdf_document
+header-includes:
+  - \usepackage{color}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(estimatr)
+library(dplyr)
+library(haven)
+library(glmnet)
+library(boot)
+library(ggplot2)
+library(MASS)
+library(rstan)
+library(bayesplot)
+
+set.seed(42)
+```
+
+## Exponential Family
+
+1. Assume $Y \sim Poisson(\lambda)$.
+
+(1) Rewrite the pmf of $Y$ in exponential family form $\exp[y\theta -b(\theta)+c(y)]$.
+
+(2) Find the mean and variance of $Y$.
+
+
+
+## Linear Models
+
+2. `hierarchypaperdata.dta` is a panel dataset where each observation is a country-year, so each country appears in the dataset multiple times. 
+The dataset is available on canvas. 
+We wish to test the theory that war (using a one-year lag) has a negative effect on gender hierarchies. 
+
+```{r}
+hierarchies <- read_dta("hierarchypaperdata.dta")
+
+# Create one-year lag variable using warDummy. Assuming it's a one-year backward lag.
+hierarchies <- hierarchies %>%
+  arrange(ccode, year) %>%  
+  group_by(ccode) %>%      
+  mutate(war_lag = lag(warDummy, n = 1)) %>%  
+  ungroup() 
+
+# Selecting columns using base R
+hierarchies[, c("country_name", "year", "polempowerment", "l_polempowerment", "warDummy", "war_lag")]
+
+```
+(1) Fit a standard linear model to this dataset using clustered standard errors. 
+
+(2) Interpret the results and identify at least three ways that this modeling strategy might be incorrect. You should include control variables, but it definitely does not need to be perfect.
+
+```{r}
+
+clustered_model <- lm_robust(
+  polempowerment ~ war_lag + ccode + cleanelec + polity + lpop + neighborpolempowerment, 
+  data = hierarchies,
+  clusters = ccode
+)
+
+summary(clustered_model)
+```
+
+
+##### Interpretation & Improvements
+The following variables are considered to be statistically significant. The political empowerment of neighboring countries (neighborpolempowerment) has a strong positive effect on political empowerment within the country. Political empowerment of neighboring countries is associated with a 0.2618 increase in political empowerment within the country. This suggests political empowerment in neighboring countries may act as a spillover effect, where a country’s political empowerment improves when its neighbors have stronger political empowerment of all genders. 
+
+Additionally, clean elections has a strong positive relationship with political empowerment, showing that a 1-unit increase in the presence of clean elections in a country is associated with a 0.3965 increase in political empowerment. This suggests that countries with clean elections tend to have higher political empowerment. On a side note, I would hypothesize that this could have an inverted causal relationship, where countries of higher political empowerment lead to cleaner elections. 
+
+- Better Controls: There could be other unobserved variables (e.g., cultural factors, economic development, education) that are influential in measures of political empowerment that are not accounted for in the model. 
+- Non-linear relationships: This model assumes a linear relationship between the predictors and the dependent variable, which might not be true. These could be non-linear.
+- Clustering is not sufficient: Clustered standard errors account for potential within-group correlation, but there could be correlation between neighboring countries. Seeing as war is not necessarily within a single country -- multi-country civil wars would create issues with this clustering decision.
+
+
+## GLM
+
+3. Now we are going to turn things around and test the theory that the lagged measure of gender hierarchies has an "effect" on the probability of war. 
+
+(1) Fit a logistic regression to this data. There are ways to do clustered standard errors for this.  But for this case, just go ahead and calculate the bootstrap standard errors. Make sure you are re-sampling **countries** and not observations, since each country appears multiple times.  
+
+(2) Interpret the results.  You can provide additional plots or diagnostics that you think are helpful. 
+
+```{r}
+
+logit_model <- glm(warDummy ~ l_polempowerment + cleanelec + polity + lpop + neighborpolempowerment, 
+                   family = binomial(link = "logit"), data = hierarchies)
+
+# Standard Error f(n)
+logit_coefs <- function(data, indices) {
+  model <- glm(warDummy ~ l_polempowerment + cleanelec + polity + lpop + neighborpolempowerment, 
+               family = binomial(link = "logit"), data = data[indices, ])
+  return(coef(model))
+}
+
+# Bootstrapping stratified by country code
+boot_results <- boot(data = hierarchies, statistic = logit_coefs, R = 100, strata = hierarchies$ccode)
+boot_ci <- boot.ci(boot_results, type = "perc")
+
+# Calculate t-statistics for bootstrap results
+t_stats <- boot_results$t0 / apply(boot_results$t, 2, sd)
+p_values <- 2 * (1 - pnorm(abs(t_stats)))  
+significant_coeffs <- names(p_values[p_values < 0.05])
+data.frame(coefficient = names(t_stats), t_stat = t_stats, p_value = p_values, significant = p_values < 0.05)
+
+```
+```{r}
+
+# Plot the coefficients with confidence intervals
+boot_coefs <- data.frame(boot_results$t)
+coef_names <- names(coef(logit_model))
+colnames(boot_coefs) <- coef_names
+
+boot_summary <- data.frame(
+  Coefficients = coef_names[2:length(coef_names)],  # Offset by 1, starting from the second element
+  Mean = colMeans(boot_coefs[, 2:ncol(boot_coefs)]),  # Adjust to exclude the first column if necessary
+  Lower_CI = apply(boot_coefs[, 2:ncol(boot_coefs)], 2, function(x) quantile(x, probs = 0.025)),
+  Upper_CI = apply(boot_coefs[, 2:ncol(boot_coefs)], 2, function(x) quantile(x, probs = 0.975))
+)
+
+boot_summary
+
+ggplot(boot_summary, aes(x = Coefficients, y = Mean)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI), width = 0.2) +
+  labs(title = "Bootstrap Coefficients with Confidence Intervals", y = "Coefficient Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+##### Interpretation
+The bias values are small and generally close to zero, which indicates that the bootstrap has provided unbiased estimates for the coefficients, as each of the bootstrap samples are generally well-aligned with the original estimates. Given these controls, we can say that the lagged measure of gender hierarchies (l_polempowerment) is statistically signficant at the 95% threshold, and has a signficant negative effect. This suggests that higher political empowerment in the past is associated with lower probability of war in the present/future.
+
+## Count Models
+
+4. Re-organize the data so that it is collapsed to one observation per country. The outcome variable should be the count of the number of total years where each country was at war.  The explanatory variable should be the average ``polity`` score and the average ``polempowerment`` score across the time period.^[Yes, this is bad for causal inference but I need a Poisson example.] Fit a Poisson regression to this model.  
+
+5. Is there evidence of zero-inflation and/or overdispersion?  If so, choose an appropriate model to adjust. Again, be sure to interpret the results of your final model.
+
+```{r}
+# Collapse data
+country_data <- hierarchies %>%
+  group_by(ccode) %>%
+  summarise(
+    total_wars = sum(warDummy, na.rm = TRUE), 
+    avg_polity = mean(polity, na.rm = TRUE),  
+    avg_polempowerment = mean(polempowerment, na.rm = TRUE)
+  )
+
+
+# Poisson!
+poisson_model <- glm(total_wars ~ avg_polity + avg_polempowerment, 
+                     data = country_data, 
+                     family = poisson)
+summary(poisson_model)
+
+# Dispersion??
+dispersion <- sum(resid(poisson_model, type = "pearson")^2) / poisson_model$df.residual
+dispersion
+
+# Deal with overdispersion w/ negative binomial
+nb_model <- glm.nb(total_wars ~ avg_polity + avg_polempowerment, data = country_data)
+summary(nb_model)
+
+# Expected decrease in number of wars when moving from 0 to 1 in polempowerment
+expected_decrease <- 1 - exp(-3.3164)
+print(paste("Expected decrease in wars (0 -> 1 polempowerment):", expected_decrease))
+
+
+```
+##### Interpretation
+Dispersion statistic = 11.85848 > 1 --> overdispersion is present! After running the negative binomial, we see that the theta < 1, so this is an appropriate model for the data. The results show that avg_polempowerment is statistically signficant at the 95% threshold, and has a strong negative relationship with the number of wars. If we were to compare a country with no political empowerment (0) to full (1), the model indicates there is a 96.3% decrease in the expected number of wars. 
+
+
+## Bayesian Model
+
+6. We will continue to use the same dataset `hierarchypaperdata.dta`. The data is measured over multiple years for all countries, so we would like to use a hierarchical model on countries. 
+
+Let
+
+* $y_i$ be the number of total years the country was at war for country $i$. 
+* $n_i$ be the number of years for country $i$. 
+* $\theta_i$ be the expected number of wars per country-year.
+
+
+Assume that 
+
+* $y_i \sim Poission (n_i \theta_i)$.
+* $\theta_i \sim Gamma(\alpha, \beta)$ for a convenient conjugate prior. 
+* Here we can assume vague uniform priors for $\alpha$ and $\beta$. 
+
+Fit a Bayesian model and provide basic diagnostics. 
+
+```{r}
+# Create stan dataset
+country_data <- data.frame(
+  country_id = unique(hierarchies$ccode),
+  y = tapply(hierarchies$warDummy, hierarchies$ccode, sum),  # sum(wars) for each country & all years
+  n = tapply(hierarchies$year, hierarchies$ccode, length)  # num years for each country
+)
+
+stan_data <- list(
+  N = nrow(country_data),
+  y = country_data$y,
+  n = country_data$n
+)
+
+# Stan Model
+fit <- stan(
+  file = "poisson_war.stan", 
+  data = stan_data,          
+  iter = 2000,                   
+  chains = 3,                  
+  warmup = 500,                 
+)
+
+```
+```{r}
+# Check model diagnostics
+print(summary(fit), digits = 2)
+stan_trace(fit)  
+rstan::stan_diag(fit) 
+
+# Check effective sample size and R-hat values
+print(fit, probs = c(0.025, 0.975))
+
+# Posterior predictive checks 
+y_sim <- extract(fit, pars = "y_sim")$y_sim
+ppc_dens_overlay(y = country_data$y, yrep = y_sim[1:100, ])  
+
+plot(fit)
+```
+Density of simulated (y_sim) and observed data (country_data$y) overlaps well, so the model seems to fit the data well. Rhat <1.01 and n_eff seem to be relatively large for all estimated thetas. Traceplots seem to show convergence with stable means, and fairly indistinct patterns.
+

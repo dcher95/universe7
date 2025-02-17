@@ -1,0 +1,122 @@
+library(readr)
+library(haven)
+
+## Open up our data and subset to the year 2000
+dat <- read_dta("hierarchypaperdata.dta")
+dat_2000<-dat[dat$year==2000, ]
+
+## Let's look at a plot for women's empowerment
+plot(density(dat_2000$polempowerment, na.rm=TRUE))
+rug(dat_2000$polempowerment)
+
+## We can fit a very simple linear model
+model1<-lm(polempowerment~cleanelec+polity  + lpop + neighborpolempowerment + warDummy, data=dat_2000)
+summary(model1)
+
+## There is a lot of software out there for Bayesian models.
+## But stan is nice because you can program anything you can dream up.
+library(rstan)
+
+## Step 1) Set up your data -- take care of your missing values
+data4stan<-dat_2000[,c("polempowerment", "cleanelec", "polity", "lpop", "neighborpolempowerment")]
+data4stan<-data4stan[complete.cases(data4stan),]
+
+## Step 2) Write your model
+
+## Step 3) Set up data so it works with the model
+
+simple_data<-list(
+  N=nrow(data4stan),
+  y=data4stan$polempowerment,
+  x=data4stan$cleanelec
+)
+
+## Step 4) Run the model
+stanFit1<-stan(
+ file="SimpleLM.stan",
+ data=simple_data,
+ chains=3,
+ warmup=200,
+ iter=1000,
+ cores=1
+)
+
+## Step 5) Diagnose the model
+
+## (A later video)
+
+## Step 6) Summarize results
+
+summary(stanFit1)$summary
+
+## Let's compare
+summary(lm(polempowerment~cleanelec, data=dat_2000))
+
+
+####################################
+## Let's try a multivariate model
+
+## Let's go look at the model
+
+## Need to set up the design matrix with a constant
+X=data4stan[,c(2:5)]
+X<-cbind(1, X)
+colnames(X)[1]<-"Constant"
+
+## Now set up the data
+multi_data<-list(
+  N=nrow(data4stan),
+  K=ncol(X),
+  y=data4stan$polempowerment,
+  X=X
+)
+
+## Let's run it!
+stanFit2<-stan(
+  file="SimpleLM2.stan",
+  data=multi_data,
+  chains=3,
+  warmup=200,
+  iter=1000,
+  cores=1
+)
+
+summary(stanFit2)$summary[1:6,]
+
+## Now let's have some fun
+
+## What if we wanted student-t errors instead of normal?
+## And what if instead, our main question was about the distribution of 
+## 2*beta1-beta5?
+
+
+## Now set up the data (Use = and not <-)
+t_data<-list(
+  N=nrow(data4stan),
+  K=ncol(X),
+  y=data4stan$polempowerment,
+  X=X,
+  scale_beta=rep(3.0, 5),
+  loc_sigma=1
+)
+
+
+# Let's run it!
+stanFit3<-stan(
+  file="TDistLM.stan",
+  data=t_data,
+  chains=3,
+  warmup=200,
+  iter=1000,
+  cores=1
+)
+
+## Compare?
+summary(stanFit3)$summary[1:6,]
+summary(stanFit2)$summary[1:6,]
+
+
+## let's find our quantity
+tail(summary(stanFit3)$summary)
+
+

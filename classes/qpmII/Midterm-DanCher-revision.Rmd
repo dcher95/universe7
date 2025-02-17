@@ -1,0 +1,143 @@
+---
+title: "Midterm Revisions - DanCher"
+author: "Dan Cher"
+date: "2024-12-5"
+output: pdf_document
+---
+
+# Problem 2f
+Confidence Interval = [0.76, 1.095]
+
+If we were to repeat this experiment many times and get a sample estimate each time, then 95% of the time our test-statistic will be between 0.76 and 1.095.
+
+# Problem 4
+
+```{r}
+# Calculate power through simulations.
+
+set.seed(42)
+
+# Params
+n <- 30
+alpha <- 0.05
+treatment_effect <- 0.4
+simulations <- 1000
+set.seed(42)
+
+trial_sim <- function(n, treatment_effect) {
+  control <- rnorm(n, mean = 0, sd = 1)
+  treatment <- rnorm(n, mean = treatment_effect, sd = 1)
+  
+  test_result <- t.test(control, treatment, var.equal = TRUE)
+  
+  rejection_rule <- test_result$p.value < alpha
+  
+  return(rejection_rule)
+}
+
+rejections <- numeric(simulations)
+for (i in 1:simulations) {
+  rejections[i] <- trial_sim(n, treatment_effect)
+}
+
+power <- mean(rejections)
+cat("Power :", power, "\n")
+
+```
+
+```{r}
+sd <- 1           # Standard deviation
+effect_size <- 0.4  # Standardized effect size
+n <- 30            # Sample size
+
+# Calculate standard error (SE)
+
+
+# Critical z-value for two-tailed test at alpha = 0.05
+z_critical <- 1.96
+
+power <- (1 - pnorm(z_critical - effect_size / SE)) + 
+  pnorm(-z_critical - effect_size / SE)
+
+# Power calculation (simplified)
+SE <- sd / sqrt(n)
+power <- 1 - pnorm(1.96, mean = effect_size / SE, sd = 1) + pnorm(-1.96, mean = effect_size / SE, sd = 1)
+
+cat(pnorm(1.96, mean = effect_size / SE, sd = 1), "\n")
+cat(pnorm(-1.96, mean = effect_size / SE, sd = 1))
+
+```
+
+```{r}
+# Parameters
+n <- 30           # Sample size
+alpha <- 0.05     # Significance level
+effect_size <- 0.4  # Standardized effect size
+sd <- 1            # Standard deviation
+
+power <- pnorm(1.96 * sqrt(2 / n), mean = 0.4, sd = sqrt(2 / n))
+
+SE <- sd / sqrt(n)
+power <- 1 - pnorm(1.96, mean = sd / sqrt(n), sd = 1) + pnorm(-1.96, mean = effect_size / SE, sd = 1)
+```
+
+```{r}
+# Power Analysis for Treatment Effect
+
+# Set parameters
+effect_size <- 0.4  # Standardized effect size
+n <- 30             # Sample size
+alpha <- 0.05       # Significance level
+
+# Calculate critical value for two-sided test
+critical_value <- qt(1 - alpha/2, df = 2*n - 2)
+
+# Calculate non-centrality parameter
+ncp <- sqrt(n/2) * effect_size
+
+# Calculate power
+power <- 1 - pt(critical_value, df = 2*n - 2, ncp = ncp) + 
+         pt(-critical_value, df = 2*n - 2, ncp = ncp)
+
+# Print results
+cat("Power Analysis Results:\n")
+cat("Effect Size:", effect_size, "\n")
+cat("Sample Size:", n, "\n")
+cat("Significance Level (α):", alpha, "\n")
+cat("Power:", power, "\n")
+```
+
+
+# Problem 5
+
+```{r}
+
+typeI_sim <- function(n) {
+  control <- rnorm(n, mean = 0, sd = 1)
+  treatment <- rnorm(n, mean = 0, sd = 1)
+  
+  test_result <- t.test(control, treatment, var.equal = TRUE)
+  
+  rejection_rule <- test_result$p.value < alpha
+  
+  return(rejection_rule)
+}
+
+rejections <- numeric(simulations)
+for (i in 1:simulations) {
+  rejections[i] <- typeI_sim(n)
+}
+
+type_I_error_rate <- mean(rejections)
+
+type_II_error_rate <- 1 - power
+
+# Output the results
+cat("Type I Error Rate:", type_I_error_rate, "\n")
+cat("Type II Error Rate:", type_II_error_rate, "\n")
+```
+
+Type I error rate is the probability of rejecting the null hypothesis when it is true. In this instance that would be the probability of concluding there is a significant treatment effect when there actually isn't. Given our inputs, we see that 5.5% of the time, we incorrectly conclude there is a treatment effect when there actually isn't one. 
+
+Type II error rate is the probability of failing to reject the null hypothesis when it is false. We fail to detect a significant effect (effect = 0.4 in our case) when it does actually exist. Given our inputs, 68% of the simulations show the test failed to reject the null hypothesis despite there being a true effect.
+
