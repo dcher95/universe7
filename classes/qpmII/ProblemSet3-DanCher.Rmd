@@ -2,17 +2,13 @@
 title: "QPM II"
 subtitle: "Problem Set 3"
 author: "Daniel Cher"
-date: "2024-10-23"
+date: "2024-10-25"
 output: pdf_document
 
 mainfont: Arial
 ---
 
 ```{r setup, include=FALSE} 
-
-if(!require(bayestestR)) {
-  install.packages("bayestestR")
-}
 
 library(bayestestR)
 library(ggplot2)
@@ -99,6 +95,33 @@ cat("95% Confidence Interval: [", ci_lower, ",", ci_upper, "]\n")
 ```
 
 The informed bayesian prior leads to a tighter distribution compared to the uninformed prior with the incorporation of prior knowledge , especially with a stronger prior (larger alpha & beta ). In contrast, the MLE-based confidence interval is derived solely from the observed data, and with a relatively small sample size (\( n \) = 5), it's distribution is more comparable to the uninformed Bayesian distribution. As the sample size \( n \) increases, we would expect the MLE-based interval to narrow, but given current conditions, it's wide confidence-interval is a product of small sample size.
+
+### Problem 14
+
+```{r}
+
+# Parameters
+set.seed(42)
+beta_true <- 5
+theta_true <- 7
+
+# Random draws from Weibull distribution
+n <- 1000
+data <- rweibull(n, shape = beta_true, scale = theta_true)
+
+# Score f(n)
+score_function <- function(beta, x) {
+  n <- length(x)
+  term1 <- sum(x^beta * log(x)) / sum(x^beta)
+  term2 <- sum(log(x)) / n
+  score <- ((1/(term1 - term2)) - beta) 
+  return(score)
+}
+
+# uniroot
+output <- uniroot(score_function, lower = 0.1, upper = 10, x = data)
+print(output$root)
+```
 
 ### Problem 15
 

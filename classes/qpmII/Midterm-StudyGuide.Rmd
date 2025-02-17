@@ -1,0 +1,295 @@
+---
+title: "Midterm - Study Guide"
+output: pdf_document
+date: "2024-10-27"
+---
+# Bayesian (PS3)
+
+## - Taking draws from prior / posterior
+- Take draws from a distribution described by the parameters you've chosen as the prior
+```{r}
+set.seed(42)
+
+# Beta
+alpha_prior <- 1
+beta_prior <- 1
+
+beta_p_i <- rbeta(1048,alpha_prior , beta_prior)
+beta_post_i <- rbeta(1048, alpha_prior + 558, beta_prior + 490)
+
+# Gamma (PS3)
+gamma_post_i <- rgamma(10000, shape = n + alpha, rate = beta + sum_log_data)
+
+# Weibull (PS3)
+data <- rweibull(n = 1000, shape = 5, scale = 7)
+
+# Plot the prior
+ggplot() + 
+  geom_density(aes(x=gamma_post_i)) + 
+  theme_minimal() +
+  labs(title = "Posterior Distribution", x = "Theta", y = "Density")
+
+```
+
+## - Credible Interval
+```{r}
+# Calculate 95% credible interval
+credible_interval <- quantile(gamma_post_i, probs = c(0.025, 0.975))
+print(paste("95% Credible Interval: [", credible_interval[1], ", ", credible_interval[2], "]", sep = ""))
+```
+
+## - HPD interval
+```{r}
+# Calculate 95% HPD interval
+hpd_interval <- bayestestR::hdi(gamma_post_i, ci = 0.95)
+print(paste("95% HPD Interval: [", hpd_interval$CI_low, ", ", hpd_interval$CI_high, "]", sep = ""))
+```
+
+
+```{r}
+# Gamma prior (Practice Midterm Bayesian problem)
+
+x <- c(2, 2, 1, 3, 2, 1, 0, 4)
+n <- length(x)
+
+gamma_post_i <- rgamma(10000, shape = n + sum(x), rate = beta + n)
+
+# Calculate 95% credible interval
+credible_interval <- quantile(gamma_post_i, probs = c(0.025, 0.975))
+print(paste("95% Credible Interval: [", credible_interval[1], ", ", credible_interval[2], "]", sep = ""))
+
+# Calculate 95% HPD interval
+hpd_interval <- bayestestR::hdi(gamma_post_i, ci = 0.95)
+print(paste("95% HPD Interval: [", hpd_interval$CI_low, ", ", hpd_interval$CI_high, "]", sep = ""))
+```
+
+# Frequentist
+
+## - Calcuate the 95% CI (CS12)
+
+```{r , echo=FALSE}
+x = c(1, 2, 4, 2, 3, 6, 2, 5)
+y = c(3, 1, 7, 4, 5, 2, 3, 4)
+
+z_value <- 1.96
+
+x_mean <- mean(x)
+
+se <- sd(x) / sqrt(length(x)-1)
+
+lower_bound <- x_mean - z_value * se
+upper_bound <- x_mean + z_value * se
+
+ci <- c(lower_bound, upper_bound)
+```
+
+## - Calculate T & Z Critical Values
+
+```{r}
+# Define the parameters
+alpha <- 0.05
+n <- 22
+df <- n - 1
+
+# Calculate the critical value for a two-sided test
+critical_value <- qt(1 - alpha / 2, df)
+
+critical_value
+
+# Calculate the critical value for a two-sided z-test
+z_critical_value <- qnorm(1 - alpha / 2)
+
+# Print the result
+z_critical_value
+
+```
+
+# Non-Parametric
+
+## - Bootstrap
+```{r}
+set.seed(42)
+
+x <- c(2, 4, 5, 3, 8, 10, -2, 1, -1, 2, 5, 5)
+
+replications <- 2000
+
+bootstrap_medians <- rep(NA, replications)
+for (i in 1:replications) {
+  sample_x <- sample(x, length(x), replace = TRUE)
+  bootstrap_medians[i] <- median(sample_x)
+}
+
+# Calculate Bootstrap SE
+bootstrap_se <- sd(bootstrap_medians)
+
+cat("Bootstrap SE for the median:", bootstrap_se, "\n")
+```
+
+```{r}
+set.seed(42)
+
+x <- c(2, 2, 1, 3, 2, 1, 0, 4)
+replications <- 10000
+
+bootstrap_means <- rep(NA, replications)
+for (i in 1:replications) {
+  sample_x <- sample(x, length(x), replace = TRUE)
+  bootstrap_means[i] <- mean(sample_x)
+}
+
+# Calculate Bootstrap SE
+bootstrap_se <- sd(bootstrap_means)
+
+cat("Bootstrap SE for the mean:", bootstrap_se, "\n")
+
+```
+
+## - Jackknife
+```{r}
+n <- length(x)
+jackknife_medians <- rep(NA, n)
+
+for (i in 1:n) {
+  jackknife_sample <- x[-i]
+  jackknife_medians[i] <- median(jackknife_sample)
+}
+
+# Calculate the Jackknife estimate of the SE
+jackknife_mean <- mean(jackknife_medians)
+jackknife_se <- sqrt((n - 1) * mean((jackknife_medians - jackknife_mean)^2))
+
+cat("Jackknife SE for the median:", jackknife_se, "\n")
+```
+
+# Null Hypothesis Testing
+
+## - Calculate p-value
+```{r}
+
+x <- rnorm(60, mean=3, sd=1)
+x.bar <- mean(x)
+sd <- sd(x)
+
+# Assuming known standard deviation from sample (σ)
+n <- 60
+mu_0 <- 0
+sigma <- sd
+
+pnorm(x.bar, mean = 0, sd = sd/sqrt(n), lower.tail=FALSE)
+#print(1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n)))
+```
+
+### - Assume NH = True
+```{r}
+n = 40
+mu = 0
+null_mu = 0
+sigma = 2
+
+data = rnorm(n, mean = mu, sd = sigma)
+
+print(1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n)))
+```
+
+### - Assume NH = True w/ sampling
+```{r}
+N = 400
+n = 40
+mu = 1
+sigma = 2
+null_mu = 0
+
+ps = rep(0, N)
+for (i in 1:N){
+data = rnorm(n, mean = mu, sd = sigma)
+ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+}
+plot(density(ps))
+```
+
+### - Assume NH = False w/ sampling
+```{r}
+set.seed(1)
+
+N = 400
+n = 40
+mu = 1
+sigma = 2
+null_mu = 0
+
+ps = rep(0, N)
+for (i in 1:N){
+  data = rnorm(n, mean = mu, sd = sigma)
+  ps[i] = 1-pnorm(mean(data),mean=null_mu,sd=sigma/sqrt(n))
+}
+
+print(sum(ps<=0.05)/N)
+
+# Reject 94% of the time. This is called power.
+
+plot(density(ps))
+```
+
+## - Likelihood Ratio Tests (CS15)
+
+```{r}
+# Likelihood under H0: mu = 0
+L_H0 <- exp(sum(dnorm(x, mean = 0, sd = sigma, log = TRUE)))
+
+# Likelihood under H1: mu = 20
+L_H1 <- exp(sum(dnorm(x, mean = 20, sd = sigma, log = TRUE)))
+
+# Calculate the Likelihood Ratio
+lrt <- L_H0 / L_H1
+lrt
+```
+
+# Calculating Power
+```{r}
+# Parameters
+n <- 20  # number of insomniacs
+p_null <- 0.8  # null hypothesis proportion
+alpha_level <- 12  # rejection region threshold
+
+# (a) Type I Error (α)
+# Calculate the probability of Type I error
+alpha <- pbinom(alpha_level, n, p_null)
+cat("Type I Error (α):", alpha, "\n")
+
+# (b) Type II Error (β) for p = 0.6
+p_alternative_1 <- 0.6
+beta_1 <- 1 - pbinom(alpha_level, n, p_alternative_1)
+cat("Type II Error (β) when p = 0.6:", beta_1, "\n")
+
+# (c) Type II Error (β) for p = 0.4
+p_alternative_2 <- 0.4
+beta_2 <- 1 - pbinom(alpha_level, n, p_alternative_2)
+cat("Type II Error (β) when p = 0.4:", beta_2, "\n")
+
+# (d) Power of the Test for each p value (loop)
+p_values <- c(0.4, 0.5, 0.6, 0.7)
+power_values <- numeric(length(p_values))
+
+for (i in 1:length(p_values)) {
+  beta <- 1 - pbinom(alpha_level, n, p_values[i])
+  power_values[i] <- 1 - beta
+}
+
+# Display the results
+for (i in 1:length(p_values)) {
+  cat("Power of the Test when p =", p_values[i], ":", power_values[i], "\n")
+}
+
+# single call
+p_value <- 0.4
+beta <- 1 - pbinom(alpha_level, n, p_value)
+power_value <- 1 - beta
+
+# Optional: Plotting Power vs. p values
+plot(p_values, power_values, type = "b", pch = 19, col = "blue",
+     xlab = "True Proportion (p)", ylab = "Power",
+     main = "Power of the Test vs. True Proportion")
+
+
+```

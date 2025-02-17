@@ -1,0 +1,81 @@
+---
+title: "QPM II - Class Session 20"
+output: pdf_document
+date: "2024-11-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Install packages if not already installed
+if (!require("MASS")) install.packages("MASS")
+if (!require("AER")) install.packages("AER")
+if (!require("effects")) install.packages("effects")
+# remotes::install_github("https://github.com/r-forge/countreg", subdir="pkg")
+install.packages("topmodels", repos = "https://R-Forge.R-project.org")
+
+# Load libraries
+library(MASS)
+library(effects)
+library(AER)
+library(countreg)
+library(topmodels)
+```
+
+(1) Plot the distribution of the outcomes.
+```{r}
+victim_data <- read.csv("victim.csv")
+hist(victim_data$resp, main = "Distribution of the Number of Victims Known", 
+     xlab = "Number of Victims Known", ylab = "Frequency", col = "lightblue", breaks = max(victim_data$resp))
+
+```
+(2) Fit a Poisson model to the data and inspect dispersion by using the built-in function dispersiontest().
+```{r}
+poisson_model <- glm(resp ~ race + income, data = victim_data, family = poisson)
+
+dispersiontest(poisson_model)
+dispersiontest(poisson_model, alternative = "less")
+
+summary(poisson_model)
+
+```
+We can reject the null hypothesis in overdispersion test, but cannot reject the null hypothesis in underdispersion test. Therefore, the model has overdispersion. In other words, the model violate the equidispersion assumption of poisson regression.
+
+(3) Visualize the dispersion by plotting the fitted value against squared differences between fitted value and
+real outcome. Discuss whether the data has overdispersion or underdispersion according to the plot.
+```{r}
+# Calculate fitted values and squared differences
+fitted_values <- fitted(poisson_model)
+squared_diffs <- (victim_data$resp - fitted_values)^2
+
+# fitted v. squared error
+plot(fitted_values, squared_diffs, main = "Dispersion Plot",
+     xlab = "Fitted Values", ylab = "Squared Differences", pch = 19, col = "blue")
+
+```
+We see a small positive trend, and therefore see small amount of overdispersion.
+
+(4) Examine the Poisson model prediction using the built-in function rootogram().
+```{r}
+topmodels::rootogram(poisson_model)
+
+```
+(5) Re-fit a model based on your dispersion findings. Use the built-in function rootogram() on the new
+model. Discuss whether the new model is better than the original Poisson model.
+```{r}
+# Re-fit with Negative Binomial model since there is negative binomial
+nb_model <- glm.nb(resp ~ race + income, data = victim_data)
+
+rootogram(nb_model)
+
+AIC(poisson_model, nb_model)
+
+summary(nb_model)
+```
+(6) Plot the effects of race and income on the outcomes.
+```{r}
+# plot(allEffects(nb_model))
+library(sjPlot)
+plot_model(nb_model, type = "pred", terms = "race", ci.lvl=0.95)
+plot_model(nb_model, type = "pred", terms = "income", ci.lvl=0.95)
+```

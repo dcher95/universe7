@@ -1,0 +1,219 @@
+---
+title: "QPM II - Problem Set 4"
+output: pdf_document
+geometry: margin=1in
+date: "2024-11-13"
+---
+
+1) The Negative Binomial Distribution
+
+a. Use the integrate function in R to find the Expected A Posteriori estimate of $\theta$. Use a $\beta$ distribution for the prior with parameters $\alpha$ = $\beta$ = 1.
+```{r}
+# Given parameters
+x <- c(23, 14, 24, 17, 4, 40, 17, 13, 31, 24)
+s <- 1
+alpha <- 1
+beta <- 1
+
+# Likelihood f(n)
+likelihood <- function(theta) {
+  suppressWarnings(prod(choose(x + s - 1, x) * theta^s * (1 - theta)^x))
+}
+
+# Integrals
+num_posterior_integral <- integrate(function(theta) theta * dbeta(theta, alpha, beta) * 
+                                      likelihood(theta), 0, 1)
+denom_posteriorintegral <- integrate(function(theta) dbeta(theta, alpha, beta) * 
+                                       likelihood(theta), 0, 1)
+
+# EAP Estimate
+E_theta <- num_posterior_integral$value / denom_posteriorintegral$value
+cat("E(theta) =", E_theta, "\n")
+
+
+```
+b. Now execute a similar method to find the posterior variance of $\theta$.
+
+The posterior variance is given by Var($\theta$) = E($\theta^2$) - E($\theta$))^2. 
+We have already calculated E($\theta$), therefore we need to calculate E($\theta^2$). 
+The parameter is denoted by $\alpha$.
+
+```{r}
+
+# To calculate posterior variance, just square theta.
+numerator <- integrate(function(theta) theta^2 * 
+                         dbeta(theta, alpha, beta) * 
+                         likelihood(theta), 0, 1)
+
+# Denom is consistent
+E_theta_squared <- numerator$value / denom_posteriorintegral$value
+
+posterior_variance <- E_theta_squared - E_theta^2
+
+cat("E(theta^2) =", E_theta_squared, "\n")
+cat("Posterior Variance =", posterior_variance, "\n")
+```
+c. Now plot the likelihood function and the posterior and discuss how they differ.
+```{r}
+theta_values <- seq(0, 1, length.out = 1000)
+likelihood_values <- sapply(theta_values, likelihood)
+posterior_values <- dbeta(theta_values, alpha, beta) * likelihood_values
+
+plot(theta_values, likelihood_values, type = "l", col = "blue", 
+     lwd = 2, ylab = "Density", xlab = expression(theta), 
+     main = "Likelihood and Posterior")
+lines(theta_values, posterior_values, col = "red", lwd = 2)
+legend("topright", legend = c("Likelihood", "Posterior"), col = c("blue", "red"), lwd = 2)
+
+```
+The plot is overlapping. They do not differ.
+
+d. Show that these results are sensitive to choices of $\alpha$ and $\beta$. Plot different posteriors, calculate the posterior mean using the numerical method above, and explain the changes.
+```{r}
+# Different priors
+prior_params <- list(c(1, 1), c(2, 2), c(1, 3), c(3, 1))
+
+plot(NULL, xlim = c(0, 1), ylim = c(0, max(posterior_values)), 
+     xlab = expression(theta), ylab = "Posterior Density", main = "Prior Sensitivity")
+
+colors <- c("red", "blue", "green", "purple")
+for (i in seq_along(prior_params)) {
+  alpha_i <- prior_params[[i]][1]
+  beta_i <- prior_params[[i]][2]
+  posterior_i <- dbeta(theta_values, alpha_i, beta_i) * likelihood_values
+  lines(theta_values, posterior_i, col = colors[i], lwd = 2)
+}
+legend("topright", 
+       legend = c("Beta(1,1)", "Beta(2,2)", "Beta(1,3)", "Beta(3,1)"), 
+       col = colors, lwd = 2)
+
+```
+
+Changes in the prior parameters shift the weight of the prior, affecting the posterior mean. A stronger prior like Beta(1,3) centers the distribution more along the mean of theta. Weaker distributions aren't as extremely tight around the mean.
+
+e. Perform a non-parametric bootstrap to find the standard error of the MLE
+```{r}
+mle_theta <- function(data) {
+  mean(data / (data + 1))
+}
+
+# Bootstrap
+iterations <- 1000
+bootstrap_mle <- replicate(iterations, mle_theta(sample(x, replace = TRUE)))
+
+# SE of MLE
+bootstrap_se <- sd(bootstrap_mle)
+cat("Booststrap Standard Error of MLE:", bootstrap_se)
+
+```
+2) One sample t-test
+
+i. Conduct the likelihood ratio test for the null hypotheses using the results above
+```{r}
+# Given data
+data <- c(1, 3, 2, 4, -1, 7, 19, 3, -4, -5, -8)
+n <- length(data)
+theta0 <- 0 
+alpha <- 0.10
+
+# T-statistic
+x_bar <- mean(data)
+S <- sd(data)
+t_stat <- (x_bar - theta0) / (S / sqrt(n))
+
+critical_value <- qt(1 - alpha, df = n - 1)
+
+# Perform the hypothesis test
+reject_null <- abs(t_stat) > critical_value
+cat("Reject H0:", reject_null,"\n", "T-Statistic value:", abs(t_stat), "\n", "Critical Value:", critical_value)
+
+```
+
+j. Find the power function for this test.
+```{r}
+# power = Pr(rejecting H0 (t > critical value))
+power_function <- function(theta, x_bar, S, n, critical_value) {
+  non_central_t <- (x_bar - theta) / (S / sqrt(n))
+  power <- pt(critical_value, df = n - 1, ncp = abs(non_central_t), lower.tail = FALSE)
+  return(power)
+  }
+
+```
+
+k. Plot the power function for this test.
+```{r}
+theta_values <- seq(-10, 10, by = 0.1)  # Range of theta values
+power_values <- sapply(theta_values, power_function, 
+                       x_bar = x_bar, S = S, n = n, critical_value = critical_value)
+
+# Plotting of power function with the significance line == 2 
+plot(theta_values, power_values, type = "l", col = "blue", lwd = 2,
+     xlab = expression(theta), ylab = "Power",
+     main = "Power Function of the Likelihood Ratio Test")
+abline(h = 0.10, col = "red", lty = 2)
+
+```
+
+
+3) Power Calculations
+
+b + c
+```{r}
+# Power Function Calculation for different mu_a values
+mu_0 <- 7 
+mu_a_values <- c(7.5, 8, 8.5, 9)
+n <- 20
+critical_value <- 7.8225
+
+power_function <- function(mu_a, critical_value, n) {
+  z_score <- (critical_value - mu_a) / sqrt(5 / n)
+  power <- 1 - pnorm(z_score)
+  return(power)
+}
+
+# Powers for i - iv
+powers <- sapply(mu_a_values, power_function, critical_value = critical_value, n = n)
+
+# Plot
+plot(mu_a_values, powers, type = "b", pch = 19, col = "blue", 
+     xlab = "Alternative Mean (mu_a)", ylab = "Power", 
+     main = "Power Function for Different mu_a values")
+
+```
+
+d + e.
+```{r}
+
+mu_a <- 8
+sample_sizes <- c(5, 20, 50, 100, 200)
+
+powers_size <- sapply(sample_sizes, power_function, mu_a = mu_a, critical_value = critical_value)
+
+plot(sample_sizes, powers_size, type = "b", pch = 19, col = "red", 
+     xlab = "Sample Size (n)", ylab = "Power", 
+     main = "Power Function for Different Sample Sizes at mu = 8")
+
+```
+
+4) Simulation
+b - d.
+```{r}
+
+alpha <- 0.05
+
+false_discovery_rate_fn <- function(alpha, beta, phi) {
+  false_discovery_rate <- (alpha * phi) / (alpha * phi + (1 - beta) * (1 - phi))
+  return(false_discovery_rate)
+}
+
+false_discovery_rate_b <- false_discovery_rate_fn(alpha, beta = 0.75, phi = (1/6))
+cat("b. False Discovery Rate:", false_discovery_rate_b, "\n")
+
+false_discovery_rate_c <- false_discovery_rate_fn(alpha, beta = 0.75, phi = (1/21) )
+cat("c. False Discovery Rate:", false_discovery_rate_c, "\n")
+
+false_discovery_rate_d <- false_discovery_rate_fn(alpha, beta = 0.6, phi = (1/41))
+cat("d. False Discovery Rate:", false_discovery_rate_d, "\n")
+
+
+```

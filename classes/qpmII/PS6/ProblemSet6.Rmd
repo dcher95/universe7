@@ -1,0 +1,220 @@
+---
+title: "QPM II Problem Set 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lme4)
+library(faraway)
+library(rstan)
+library(bayesplot)
+library(glmnet)
+library(caret)
+library(kernlab)
+```
+
+## Introduction
+
+Let's make this as easy as possible.  We are going to use a built-in dataset (Clinical Test of Sensory Interaction and Balance) from the Faraway package.
+
+```{r}
+data(ctsib, package="faraway")
+nrow(ctsib) # Number of observations
+table(ctsib$CTSIB) # Our dependent variable
+length(table(ctsib$Subject)) # Number of unique "subjects" in the experiment.
+```
+
+This is a 2 by 3 factorial experiment.  The main outcome variable of interest is the `CTSIB` variable, which is a "four point scale measuring balance." Note that higher values on this variable mean *less* stability. 
+
+## Questions
+    
+1. \textbf{Hierarchical Model}: We are interested in the effect of the treatments (Surface and Vision) on subjects' balance, so you want to try a multi-level model with random effects on subjects. Fit a Bayesian multi-level model that predicts `ctsib` from all the other features. Provide basic diagnostics for convergence and interpret the main coefficients of interest. You may want to start with the `lme4` package to make sure your final results are correct and to help you pick plausible values for priors.^[NOTE: Stan will not automatically recognize "factors."  So you will have to make those into separate dummy variables before including them. BE SURE TO LEAVE OUT ONE CATEGORY or your model will not be identified. Again, starting with a `lme4` version will help you know if you are on the right track.] 
+
+```{r}
+### LME4 initial model fit
+# Convert factors into dummy variables
+ctsib$Surface <- as.factor(ctsib$Surface)
+ctsib$Vision <- as.factor(ctsib$Vision)
+
+# Fit a hierarchical linear mixed model
+lme4_model <- lmer(CTSIB ~ Surface + Vision + Surface:Vision + (1 | Subject), data = ctsib)
+
+# Summarize the model
+summary(lme4_model)
+
+```
+
+```{r, results="hide"}
+### Stan
+
+## Data Prep
+
+# Dummy encoding
+ctsib$Surface2 <- ifelse(ctsib$Surface == 2, 1, 0)
+ctsib$Vision2 <- ifelse(ctsib$Vision == 2, 1, 0)
+ctsib$Vision3 <- ifelse(ctsib$Vision == 3, 1, 0)
+
+# Interaction terms (dummy variable product)
+ctsib$Surface2_Vision2 <- ctsib$Surface2 * ctsib$Vision2
+ctsib$Surface2_Vision3 <- ctsib$Surface2 * ctsib$Vision3
+
+# Update the Stan data list
+stan_data <- list(
+  N = nrow(ctsib),
+  J = length(unique(ctsib$Subject)),
+  y = ctsib$CTSIB,
+  subject = as.numeric(as.factor(ctsib$Subject)),
+  Surface2 = ctsib$Surface2,
+  Surface3 = ctsib$Surface3,
+  Vision2 = ctsib$Vision2,
+  Vision3 = ctsib$Vision3,
+  Surface2_Vision2 = ctsib$Surface2_Vision2,
+  Surface2_Vision3 = ctsib$Surface2_Vision3
+)
+
+# model
+fit <- stan(
+  file = "hier.stan",  # Path to the Stan model
+  data = stan_data,
+  iter = 4000, chains = 3, cores = 3, warmup = 1000
+)
+
+```
+
+```{r}
+
+# Summary of the results
+print(fit, pars = c("beta_0", "beta_Surface2", "beta_Vision2", "beta_Vision3", "beta_Surface2_Vision2", "beta_Surface2_Vision3" ,"sigma", "sigma_u"))
+
+# Traceplot
+traceplot(fit, pars = c("beta_0", "beta_Surface2", "beta_Vision2", "beta_Vision3", "beta_Surface2_Vision2", "beta_Surface2_Vision3"))
+
+# Posterior predictive checks
+y_rep <- extract(fit)$y_rep
+ppc_dens_overlay(ctsib$CTSIB, y_rep)
+
+# TODO: Try with previous cause this looks weird!!
+
+```
+All main effects (beta_Surface2, beta_Vision2, beta_Vision3) have means close to 0 with wide credible intervals.This suggests no strong evidence that either Surface or Vision has a significant main effect on balance scores individually.
+
+Most of the variability is explained by residuals (sigma), with some contribution from subject-level random effects (sigma_u).
+
+2. \textbf{Covariate Selection} (Lasso, cross validation): After evaluating the effect of treatment, you want to find the best model that fits the data. You are uncertain whether including all covariates (Sex, age, height, weight, surface, vision) into the model actually improves model fitting. Follow a similar process of cross validation from class: 
+    (a) Split all data into a training set and a test set.
+    
+```{r}
+set.seed(42)
+train_index <- createDataPartition(ctsib$CTSIB, p = 0.7, list = FALSE)
+train_data <- ctsib[train_index, ]
+test_data <- ctsib[-train_index, ]
+```
+   (b) Build an OLS and a Lasso model using training data and cross validation.
+   
+```{r}
+# OLS model
+ols_model <- lm(CTSIB ~ Sex + Age + Height + Weight + Surface + Vision, data = train_data)
+
+# Lasson w/ CV
+x_train <- model.matrix(CTSIB ~ Sex + Age + Height + Weight + Surface + Vision, train_data)[, -1]
+y_train <- train_data$CTSIB
+lasso_cv <- cv.glmnet(x_train, y_train, alpha = 1)
+
+# Get optimal lambda
+best_lambda <- lasso_cv$lambda.min
+```
+   (c) Compare the MSE of both models on the test data. Does including all the covariates help?
+
+```{r}
+# Get predictions
+ols_preds <- predict(ols_model, newdata = test_data)
+
+x_test <- model.matrix(CTSIB ~ Sex + Age + Height + Weight + Surface + Vision, test_data)[, -1]
+lasso_preds <- predict(lasso_cv, s = best_lambda, newx = x_test)
+
+# Step 4: Compute MSE
+ols_mse <- mean((test_data$CTSIB - ols_preds)^2)
+lasso_mse <- mean((test_data$CTSIB - lasso_preds)^2)
+
+# Compare Results
+cat("OLS MSE:", ols_mse, "\n")
+cat("Lasso MSE:", lasso_mse, "\n")
+
+# View coefficients
+lasso_coeffs <- coef(lasso_cv, s = "lambda.min")
+print(lasso_coeffs)
+
+# Identify non-zero coefficients
+non_zero_coeffs <- lasso_coeffs[lasso_coeffs != 0]
+print(non_zero_coeffs)
+
+```
+Lasso improves slightly over OLS. Weight and Age seem to be unimportant, as the coefficients are very close to 0 (also height isn't very important).
+
+3. \textbf{Interactions} (OLS vs Kernel method): 
+    (a) Use Taylor series expansion, show that a radius basis function kernel $K(x,x')=\exp(-||x-x'||^2/\sigma^2)$ projects $x$ into an infinite large feature space. Namely, $K(x,x')=\phi(x)^T\phi(x')$ where length of $\phi(\cdot)$ is infinity.
+
+   (b) Manually add interactions between all pairs of features in `ctsib` data (just pairs) and run an OLS. Are these interactions useful for the model (are they significant)?
+
+```{r}
+# Create interaction terms between all pairs of features
+interaction_data <- ctsib
+
+# Ensure factors have at least 2 levels
+interaction_data$Sex <- factor(interaction_data$Sex)
+interaction_data$surface <- factor(interaction_data$Surface)
+interaction_data$vision <- factor(interaction_data$Vision)
+
+# Drop unused factor levels (if any)
+interaction_data$Sex <- droplevels(interaction_data$Sex)
+interaction_data$surface <- droplevels(interaction_data$Surface)
+interaction_data$vision <- droplevels(interaction_data$Vision)
+
+# Manually add interaction terms between pairs of features
+interaction_data$Sex_Age <- interaction_data$Sex * interaction_data$Age
+interaction_data$Sex_Height <- interaction_data$Sex * interaction_data$height
+interaction_data$Sex_Weight <- interaction_data$Sex * interaction_data$weight
+interaction_data$Sex_Surface <- interaction_data$Sex * interaction_data$Surface
+interaction_data$Sex_Vision <- interaction_data$Sex * interaction_data$Vision
+interaction_data$Age_Height <- interaction_data$Age * interaction_data$Height
+interaction_data$Age_Weight <- interaction_data$Age * interaction_data$Weight
+interaction_data$Age_Surface <- interaction_data$Age * interaction_data$Surface
+interaction_data$Age_Vision <- interaction_data$Age * interaction_data$Vision
+interaction_data$Height_Weight <- interaction_data$Height * interaction_data$Weight
+interaction_data$Height_Surface <- interaction_data$Height * interaction_data$Surface
+interaction_data$Height_Vision <- interaction_data$Height * interaction_data$Vision
+interaction_data$Weight_Surface <- interaction_data$Weight * interaction_data$Surface
+interaction_data$Weight_Vision <- interaction_data$Weight * interaction_data$Vision
+interaction_data$Surface_Vision <- interaction_data$Surface * interaction_data$Vision
+
+
+ols_model <- lm(CTSIB ~ ., data = interaction_data)
+summary(ols_model)
+
+```
+   (c) We are also interested in how our fellow friend Jacob would have performed in these tests. Suppose Jacob is a 40 years old male subject with height 180 cm, 75 kg and id 0 (these numbers are completely made up). Now build a KRLS model with a reasonable bandwith (pick it, learn it, whatever). What will Jacob's scores be for all possible surface and vision types?
+```{r}
+
+# Define Jacob's profile
+jacob <- data.frame(
+  Sex = 2,
+  Age = 40,
+  Height = 180,
+  Weight = 75,
+  Surface = factor(c("Surface1", "Surface2"), levels = levels(ctsib$Surface)),
+  Vision = factor(c("Vision1", "Vision2", "Vision3"), levels = levels(ctsib$Vision))
+)
+
+# Prepare the training data
+x_train <- model.matrix(CTSIB ~ Sex + Age + Height + Weight + Surface + Vision, ctsib)[, -1]
+y_train <- ctsib$CTSIB
+
+# Train the Kernel Ridge Regression model (KRLS)
+krls_model <- kernlab::ksvm(x_train, y_train, kernel = "rbfdot", kpar = list(sigma = 0.1), C = 1)
+
+# Predict Jacob's scores for all possible surface and vision types
+jacob_predictions <- predict(krls_model, model.matrix(~ Sex + Age + Height + Weight + Surface + Vision, jacob))
+print(jacob_predictions)
+
+```

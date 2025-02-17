@@ -1,0 +1,134 @@
+---
+title: "QPM II - Class Session 25"
+output: pdf_document
+date: "2024-11-11"
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(haven)
+library(ggplot2)
+library(dplyr)
+library(glmnet)
+```
+
+(1) Using the provided dataset communities, we are going to fit OLS, LASSO, and ridge regression and evaluate each model’s performance. First, separate the data into a training set, a validation set, and a test set. Use 1500 observations for the training set. Set aside 247 for the validation set and the remaining 247 for the test set.
+```{r}
+load("communities.Rdata")
+communities <- cbind(X)
+
+set.seed(12345) 
+
+# Shuffle rows
+communities <- communities %>%
+  sample_frac(1) 
+
+# Split dataset
+train_set <- communities %>% slice(1:1500)
+validation_set <- communities %>% slice(1501:1747)
+test_set <- communities %>% slice(1748:1994)
+
+x_train <- train_set %>% select(-ViolentCrimesPerPop) %>% as.matrix()
+y_train <- train_set$ViolentCrimesPerPop
+
+x_val <- validation_set %>% select(-ViolentCrimesPerPop) %>% as.matrix()
+y_val <- validation_set$ViolentCrimesPerPop
+
+x_test <- test_set %>% select(-ViolentCrimesPerPop) %>% as.matrix()
+y_test <- test_set$ViolentCrimesPerPop
+
+```
+
+(2) Now use the training set to fit several candidate models to predict the outcome variable ViolentCrimesPerPop. Specifically, fit OLS with a set of variables (PctUnemployed, PctLess9thGrade, PctPopUnderPov, PctWorkMom) which theoretically should best predict violent crime, and use the glmnet package to fit LASSO and Ridge with all variables except the outcome (which is the last column of the dataset).
+```{r}
+
+ols_predictors <- c("PctUnemployed", "PctLess9thGrade", "PctPopUnderPov", "PctWorkMom")
+
+# Data
+train_set_ols <- train_set %>% select(all_of(ols_predictors), ViolentCrimesPerPop)
+val_set_ols <- validation_set %>% select(all_of(ols_predictors), ViolentCrimesPerPop)
+test_set_ols <- test_set %>% select(all_of(ols_predictors), ViolentCrimesPerPop)
+
+# OLS
+ols_model <- lm(ViolentCrimesPerPop ~ ., data = train_set_ols)
+
+# LASSO model (alpha = 1 for LASSO)
+lasso_model <- cv.glmnet(x_train, y_train, alpha = 1, standardize = TRUE)
+
+# Ridge model (alpha = 0 for Ridge)
+ridge_model <- cv.glmnet(x_train, y_train, alpha = 0, standardize = TRUE)
+
+
+```
+
+(3) With the validation set, estimate prediction error using mean squared error for each of the candidate models.
+(4) With the test set, assess the generalizability of the models. Can it predict the new data well?
+
+```{r}
+
+ols_predictions <- predict(ols_model, newdata = val_set_ols)
+lasso_predictions <- predict(lasso_model, s = "lambda.min", newx = x_val)
+ridge_predictions <- predict(ridge_model, s = "lambda.min", newx = x_val)
+
+# Evaluate performance on validation
+ols_rmse <- sqrt(mean((y_val - ols_predictions)^2))
+lasso_rmse <- sqrt(mean((y_val - lasso_predictions)^2))
+ridge_rmse <- sqrt(mean((y_val - ridge_predictions)^2))
+
+# Print RMSE results
+print(paste("OLS RMSE:", ols_rmse))
+print(paste("LASSO RMSE:", lasso_rmse))
+print(paste("Ridge RMSE:", ridge_rmse))
+
+# test set
+ols_predictions_tst <- predict(ols_model, newdata = test_set_ols)
+lasso_predictions_tst <- predict(lasso_model, s = "lambda.min", newx = x_test)
+ridge_predictions_tst <- predict(ridge_model, s = "lambda.min", newx = x_test)
+
+# Test set
+ols_rmse <- sqrt(mean((y_test - ols_predictions)^2))
+lasso_rmse <- sqrt(mean((y_test - lasso_predictions)^2))
+ridge_rmse <- sqrt(mean((y_test - ridge_predictions)^2))
+
+# Print RMSE results
+print(paste("OLS RMSE (test):", ols_rmse))
+print(paste("LASSO RMSE (test):", lasso_rmse))
+print(paste("Ridge RMSE (test):", ridge_rmse))
+
+```
+```{r}
+
+# Prep data
+train__and_val_set <- communities %>% slice(1:1747)
+x_data <- train__and_val_set %>% select(-ViolentCrimesPerPop) %>% as.matrix()
+y_data <- train__and_val_set$ViolentCrimesPerPop
+
+# split into 10 folds
+folds <- sample(1:10, size = nrow(x_data), replace = TRUE)
+
+# Initialize a vector to store MSE for each fold
+rmse_values <- numeric(10)
+
+for (i in 1:10) {
+  
+  # Data split
+  test_indices <- which(folds == i)
+  x_train <- x_data[-test_indices, ]
+  y_train <- y_data[-test_indices]
+  x_test <- x_data[test_indices, ]
+  y_test <- y_data[test_indices]
+  
+  # Fit and predict
+  lasso_model <- cv.glmnet(x_train, y_train, alpha = 1, standardize = TRUE)
+  lasso_predictions <- predict(lasso_model, newx = x_test, s = "lambda.min")
+  
+  # Calculate MSE
+  rmse_values[i] <- sqrt(mean((y_test - lasso_predictions)^2))
+}
+
+# MSE average
+average_rmse <- mean(rmse_values)
+print(paste("Average RMSE from 10-fold cross-validation:", round(average_rmse, 4)))
+
+
+```
